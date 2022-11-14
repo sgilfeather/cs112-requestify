@@ -1,3 +1,10 @@
+#
+# SongFetcher.py
+# Tyler Thompson, CS112 Fall 2022
+#
+# Given a SoundCloud client ID, fetches 
+#
+
 import requests
 import os
 import dotenv
@@ -6,6 +13,9 @@ MAX_RETRIES = 10
 SONG_DIR = "songs"
 CLIENT_ID = dotenv.get_key(".env", "CLIENT_ID")
 
+# stubborn_get()
+# Given a url for a GET req, attempts up to MAX_RETRIES GET requests for
+# a successful response
 def stubborn_get(url):
     response = requests.get(url)
     retries = 0
@@ -14,11 +24,18 @@ def stubborn_get(url):
         retries += 1
     return response
 
+# search()
+# given a search query and limit on max # of results to return, makes a GET
+# req to the SoundCloud API
+# returns a JSON response with elements:
 def search(query, limit=10):
     url = f"https://api-v2.soundcloud.com/search/tracks?q={query}&client_id={CLIENT_ID}&limit={limit}"
     response = stubborn_get(url)
     return response.json()
 
+
+# download_song()
+# 
 def download_song(track):
     if not os.path.exists(SONG_DIR):
         os.mkdir(SONG_DIR)
@@ -62,8 +79,11 @@ def download_song(track):
     print("Done")
     return filename
     
+# MAIN: searches for a given artist 
+    # TODO: update eminem to artist, bpm, or genre requested by Client
 
 res = search("eminem", 4)
+print(json.dumps(res))
 for track in res["collection"]:
     title = track["title"]
     filename = download_song(track)
