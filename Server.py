@@ -12,6 +12,11 @@
 
 import sys
 import socket as socket
+import select
+import sounddevice as sd
+import numpy as np
+import soundfile as sf
+import time
 
 HOST = "127.0.0.1"  # loopback for working on cs112 server (TODO: customize)
 PACK_SIZE = 1024
@@ -25,12 +30,15 @@ class Server:
     def __init__(self, host_port):
         self.s_s = 0 # socket for listening for new clients
 
+        self.clients = [] # list of client sockets
+
         # basic server functionality
         try: 
             self.s_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.s_s.bind((HOST, host_port))
+            self.s_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             self.s_s.listen()
-        except Exception:
+        except Exception as e:
             print(f"Network error: {str(e)}.\n")
             sys.exit(0) 
 
@@ -50,10 +58,9 @@ class Server:
         # write [buff_ind, buff_ind + PACK_SIZE) bytes to client
         try:
             num_sent = c_s.send(bytes)
-            print(f"We sent {num_sent} bytes!")
             return num_sent
-        except Exception as e:
-            print(f"Socket error: {str(e)}.\n")
+        except Exception:
+            print(f"Client disconnected")
             return -1; # client connection may have dropped out
 
 
@@ -63,23 +70,34 @@ class Server:
     def run_server(self): 
         
         # TODO: outline program flow to order recv / write / req SoundCloud
-        try:
-            new_c_s, c_addr = self.s_s.accept() 
-        except Exception as e:
-            print(f"Socket error: {str(e)}.\n")
-            return -1
 
-        # TODO: for testing, read a file into buffer and write back
-        with open("dog.jpg", "rb") as file:
-            data = file.read(PACK_SIZE)
-            result = 1
+        bitrate = 44100
+        send_delay = (PACK_SIZE / 8) / bitrate
 
-            while data and result > 0:
-                result = self.write_frame(new_c_s, data)
-                data = file.read(PACK_SIZE)
-            
-        new_c_s.close()
-        return result # 0 if successful, -1 if an error occurred
+        with open("songs/9851200.wav", "rb") as f:
+            # Throw out header
+            _ = f.read(44)
+            # Read data
+            data = f.read(PACK_SIZE)
+            # Write data to client
+            while data:
+                for c_s in self.clients:
+                    if self.write_frame(c_s, data) == -1:
+                        self.clients.remove(c_s)
+                # self.write_frame(new_c_s, data)
+                data = f.read(PACK_SIZE)
+
+                # Check for new clients with call to select()
+                rlist, _, _ = select.select([self.s_s], [], [], 0)
+                for s in rlist:
+                    if s is self.s_s:
+                        new_c_s, c_addr = self.s_s.accept()
+                        self.clients.append(new_c_s)
+                        print(f"New client connected: {c_addr}\n")
+                
+                time.sleep(send_delay)
+
+        return 0
 
 #
 # MAIN: get cmd-line arguments and run server
