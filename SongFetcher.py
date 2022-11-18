@@ -5,9 +5,11 @@
 # Given a SoundCloud client ID, fetches 
 #
 
+import json
 import requests
 import os
 import dotenv
+from pydub import AudioSegment
 
 MAX_RETRIES = 10
 SONG_DIR = "songs"
@@ -76,13 +78,18 @@ def download_song(track):
             if response.status_code == 200:
                 f.write(response.content)
     
+    # Convert the file to wav
+    mp3_data = AudioSegment.from_mp3(os.path.join(SONG_DIR, filename))
+    filename_wav = f"{id}.wav"
+    mp3_data.export(os.path.join(SONG_DIR, filename_wav), format="wav")
+    
     print("Done")
     return filename
     
 # MAIN: searches for a given artist 
     # TODO: update eminem to artist, bpm, or genre requested by Client
 
-res = search("eminem", 4)
+res = search("eminem", 1)
 print(json.dumps(res))
 for track in res["collection"]:
     title = track["title"]
