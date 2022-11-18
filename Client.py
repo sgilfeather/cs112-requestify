@@ -9,6 +9,7 @@
 
 #!/usr/bin/python3
 
+import os
 import sys
 import socket as socket
 
@@ -22,7 +23,7 @@ BUFF_SIZE = PACK_SIZE * 4
 class Client:
 
     def __init__(self, host_addr, host_port):
-        self.c_s = 0  # init in run_client()
+        self.c_s = -1  # init in run_client()
 
         try:
             self.c_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -33,10 +34,14 @@ class Client:
             sys.exit(0) 
 
         self.out_filename = "out_dog.jpg"
+        # Remove the output file if it already exists
+        if os.path.exists(self.out_filename):
+            os.remove(self.out_filename)
         # TODO: make CircBuff field here after testing CircBuff
 
     def __del__(self):
-        self.c_s.close()
+        if isinstance(self.c_s, socket.socket):
+            self.c_s.close()
 
     # run_client()
     # executes loop for recieving streamed server data
@@ -53,6 +58,10 @@ class Client:
         # reads a single frame from server on client's socket, c_s, and writes
         # it into client's circular buffer
     def read_frame(self):
+        if not isinstance(self.c_s, socket.socket):
+            print("Error: client socket not initialized")
+            return -1
+        
         try:
             print(f"About to recv from server\n")
             data = self.c_s.recv(PACK_SIZE) # make list
@@ -73,7 +82,7 @@ class Client:
         #     return -1
             
         # otherwise, append data to circular buffer
-        with open(self.out_filename, "r+b") as f:
+        with open(self.out_filename, "ab") as f:
             result = f.write(data)
             print(f"Wrote {result} bytes to file")
         # self.circ_buff.append(data, len_data)
