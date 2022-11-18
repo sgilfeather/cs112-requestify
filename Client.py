@@ -73,7 +73,7 @@ class Client:
         #     return -1
             
         # otherwise, append data to circular buffer
-        with open(self.out_filename, "r+b") as f:
+        with open(self.out_filename, "ab") as f:
             result = f.write(data)
             print(f"Wrote {result} bytes to file")
         # self.circ_buff.append(data, len_data)

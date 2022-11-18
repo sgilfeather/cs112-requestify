@@ -60,6 +60,7 @@ class Server:
     # run_server()
         # given a port, runs ( name ) server: writes file in PACK_SIZE
         # packets to client
+        # TEST: file that's just over PACK_SIZE big
     def run_server(self): 
         
         # TODO: outline program flow to order recv / write / req SoundCloud
