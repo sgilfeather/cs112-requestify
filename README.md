@@ -11,8 +11,10 @@
     ```
 
 ## TODO
+- [x] write testing in Test.py (choose package framework)
+- [x] test CircBuff.py
+- [ ] packet-writing module for client and server
+- [ ] client requests song search name to be retrieved from SoundCloud
+    - [ ] connect recieved SoundParser data to Server writing out
 
--   [ ] write testing in Test.py (choose package framework)
--   [ ] test CircBuff.py
--   [ ] implement server writing at specified freq
--   [ ] integrate writing from circbuff out to file in client loop
+- [ ] potentially consume every other frame when we need to speed up?
