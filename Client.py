@@ -52,6 +52,7 @@ class Client:
         new_data = self.read_frame()
         if len(new_data) == 0:
             raise sd.CallbackStop
+        assert len(new_data) == len(outdata)
         outdata[:len(new_data)] = new_data
         outdata[len(new_data):] = b'\0' * (len(outdata) - len(new_data))
 

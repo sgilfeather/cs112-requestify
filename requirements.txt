@@ -1,7 +1,13 @@
 ## The following requirements were added by pip freeze:
 certifi==2022.9.24
+cffi==1.15.1
 charset-normalizer==2.1.1
 idna==3.4
+numpy==1.23.4
+pycparser==2.21
+pydub==0.25.1
 python-dotenv==0.21.0
 requests==2.28.1
+sounddevice==0.4.5
+soundfile==0.11.0
 urllib3==1.26.12
