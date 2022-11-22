@@ -46,13 +46,14 @@ def download_song(track):
     title = track["title"]
     id = track["id"]
     filename = f"{id}.mp3"
+    filename_wav = f"{id}.wav"
 
     print(f"Downloading: {title} ({id})")
 
     # Immediately return if the file was already downloaded
     if os.path.exists(os.path.join(SONG_DIR, filename)):
         print(f"File {filename} already downloaded")
-        return filename
+        return filename_wav
 
     transcode_url = track["media"]["transcodings"][0]["url"] + "?client_id=" + CLIENT_ID
     response = stubborn_get(transcode_url)
@@ -80,19 +81,7 @@ def download_song(track):
     
     # Convert the file to wav
     mp3_data = AudioSegment.from_mp3(os.path.join(SONG_DIR, filename))
-    filename_wav = f"{id}.wav"
     mp3_data.export(os.path.join(SONG_DIR, filename_wav), format="wav")
     
     print("Done")
-    return filename
-    
-# MAIN: searches for a given artist 
-    # TODO: update eminem to artist, bpm, or genre requested by Client
-
-res = search("eminem", 1)
-print(json.dumps(res))
-for track in res["collection"]:
-    title = track["title"]
-    filename = download_song(track)
-    if filename is None:
-        print(f"Failed to download {title}")
+    return filename_wav
