@@ -11,12 +11,12 @@
 #!/usr/bin/python3
 
 import sys
+import os
 import socket as socket
 import select
-import sounddevice as sd
-import numpy as np
-import soundfile as sf
 import time
+import SongFetcher as sf
+from SongFetcher import SONG_DIR
 
 HOST = "127.0.0.1"  # loopback for working on cs112 server (TODO: customize)
 PACK_SIZE = 1024
@@ -25,6 +25,7 @@ STATE = 0
     #        1 = receiving from client, 2 = streaming to client
     #        3 = recieving from SoundCloud, 4 = requesting to SoundCloud   
 
+SEARCH_SEED = "lofi"
 
 class Server:
     def __init__(self, host_port):
@@ -75,28 +76,44 @@ class Server:
         bitrate = 44100
         send_delay = (PACK_SIZE / 8) / bitrate
 
-        with open("songs/9851200.wav", "rb") as f:
-            # Throw out header
-            _ = f.read(44)
-            # Read data
-            data = f.read(PACK_SIZE)
-            # Write data to client
-            while data:
-                for c_s in self.clients:
-                    if self.write_frame(c_s, data) == -1:
-                        self.clients.remove(c_s)
-                # self.write_frame(new_c_s, data)
+        playlist = []
+
+        search_results = sf.search(SEARCH_SEED)["collection"]
+        for result in search_results:
+            playlist.append(sf.download_song(result))
+
+        while playlist:
+            song = playlist.pop(0)
+
+            print(f"Playing new song: {song}")
+
+            with open(os.path.join(SONG_DIR, song), "rb") as f:
+                # Throw out header
+                _ = f.read(44)
+                # Read data
                 data = f.read(PACK_SIZE)
 
-                # Check for new clients with call to select()
-                rlist, _, _ = select.select([self.s_s], [], [], 0)
-                for s in rlist:
-                    if s is self.s_s:
-                        new_c_s, c_addr = self.s_s.accept()
-                        self.clients.append(new_c_s)
-                        print(f"New client connected: {c_addr}\n")
-                
-                time.sleep(send_delay)
+                # TODO: this skips songs every 10 seconds, used for testing only. remove when done testing
+                time_played = 0
+
+                # Write data to client
+                while data and time_played < 10:
+                    for c_s in self.clients:
+                        if self.write_frame(c_s, data) == -1:
+                            self.clients.remove(c_s)
+                    # self.write_frame(new_c_s, data)
+                    data = f.read(PACK_SIZE)
+
+                    # Check for new clients with call to select()
+                    rlist, _, _ = select.select([self.s_s], [], [], 0)
+                    for s in rlist:
+                        if s is self.s_s:
+                            new_c_s, c_addr = self.s_s.accept()
+                            self.clients.append(new_c_s)
+                            print(f"New client connected: {c_addr}")
+                    
+                    time.sleep(send_delay)
+                    time_played += send_delay
 
         return 0
 
@@ -109,4 +126,5 @@ if len(sys.argv) != 2:
 
 host_port = sys.argv[1]
 server = Server(int(host_port))
-server.run_server()
+while True:
+    server.run_server()
