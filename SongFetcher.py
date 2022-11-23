@@ -33,7 +33,7 @@ def stubborn_get(url):
 def search(query, limit=10):
     url = f"https://api-v2.soundcloud.com/search/tracks?q={query}&client_id={CLIENT_ID}&limit={limit}"
     response = stubborn_get(url)
-    return response.json()
+    return response.json()["collection"]
 
 
 # download_song()
