@@ -113,6 +113,11 @@ class Server:
             # Throw out wav header
             _ = self.open_file.read(44)
 
+    def swap_client_channel(self, client, old_channel: Channel, new_channel: Channel):
+        old_channel.clients.remove(client)
+        new_channel.clients.append(client)
+        print(f"Client {client} moved from channel {old_channel.query} to channel {new_channel.query}")
+
     # run_server()
         # given a port, runs ( name ) server: writes file in PACK_SIZE
         # packets to client
