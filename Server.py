@@ -15,7 +15,6 @@ import os
 import socket as socket
 import select
 import time
-from typing import Optional
 import SongFetcher as sf
 from SongFetcher import SONG_DIR
 import random
@@ -29,6 +28,7 @@ STATE = 0
     #        3 = recieving from SoundCloud, 4 = requesting to SoundCloud   
 
 SEED_FILE = "seeds.txt"
+LOBBY_QUERY = "PokéCenter"
 
 def get_seeds(num_seeds):
     if os.path.exists(SEED_FILE):
@@ -84,11 +84,11 @@ class Server:
         clients: list
         open_file: BufferedReader
 
-        def __init__(self, query):
+        def __init__(self, query, num_songs=1):
             self.songs = []
             self.query = query
             self.clients = []
-            self.fill()
+            self.fill(num_songs)
             next_song = self.songs.pop(0)
             self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
             # Throw out wav header
@@ -131,8 +131,9 @@ class Server:
 
         # Build list of playlists
         # Each playlist will be used for a channel
-        seeds = get_seeds(channels)
-        channels = [self.Channel(seed) for seed in seeds]
+        # The first channel will be the lobby
+        channels = [self.Channel(LOBBY_QUERY, 1)]
+        channels.extend(self.Channel(seed, 2) for seed in get_seeds(channels))
 
         while True:
             for channel in channels:
@@ -153,9 +154,7 @@ class Server:
                 if s is self.s_s:
                     new_c_s, c_addr = self.s_s.accept()
                     # TODO: add client to channel of their choice, or a sentinel until they send a JOIN
-                    rand_channel = random.randrange(0, len(channels))
-                    channels[rand_channel].clients.append(new_c_s)
-                    print(f"New client connected: {c_addr}. Added to channel {rand_channel} with query {channels[rand_channel].query}")
+                    channels[0].clients.append(new_c_s)
             
             time.sleep(send_delay)
 
