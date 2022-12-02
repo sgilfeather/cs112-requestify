@@ -12,9 +12,7 @@
 import os
 import sys
 import socket as socket
-import time
 import sounddevice as sd
-import numpy as np
 
 STATE = 0
 PACK_SIZE = 1024
@@ -30,10 +28,9 @@ class Client:
 
         try:
             self.c_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            print(f"We set up the socket successfully\n")
             self.c_s.connect((host_addr, host_port))
         except Exception as e:
-            print(f"Network error: {str(e)}.\n")
+            print(f"Network error: {str(e)}.")
             sys.exit(0) 
 
         self.out_filename = "9851200.wav"
@@ -59,25 +56,30 @@ class Client:
     # run_client()
     # executes loop for recieving streamed server data
     def run_client(self):
-        result = 1
         stream = sd.RawOutputStream(
             samplerate=44100, blocksize=int(PACK_SIZE / 4),
             channels=2, dtype='int16',
             callback=self.stream_callback)
 
+        opts = [
+            "Make a request",
+            "Exit",
+        ]
+
         with stream:
             while True:
-                time.sleep(1)
-
-        print("Client done")
-
-
-        # while result > 0:
-        #     result = self.read_frame()
-        #     print(f"\n")
-
-        return result # 0 if successful, -1 if an error occurred
-
+                print("#" * 20)
+                print("Welcome to the client!")
+                for (i, opt) in enumerate(opts):
+                    print(f"{i+1}) {opt}")
+                choice = input("Enter your choice: ")
+                match choice:
+                    case "1":
+                        req = input("Enter request: ")
+                    case "2":
+                        print("Exiting...")
+                        stream.abort()
+                        sys.exit(0)
 
     # read_frame()
         # reads a single frame from server on client's socket, c_s, and writes
@@ -88,10 +90,9 @@ class Client:
             return b""
         
         try:
-            print(f"About to recv from server\n")
             data = self.c_s.recv(PACK_SIZE) # make list
         except Exception as e:
-            print(f"Read error: {str(e)}.\n")
+            print(f"Read error: {str(e)}.")
             STATE = -1
             return b"" # client connection may have dropped out
 
@@ -121,8 +122,8 @@ class Client:
 # MAIN: get cmd-line arguments and run client
 #
 if len(sys.argv) != 3:
-    print("Usage: python3 Client.py <server address> <server port>")
-    quit()
+    print(f"Usage: python {sys.argv[0]} <server address> <server port>")
+    exit(1)
 
 host_addr = sys.argv[1]
 host_port = sys.argv[2]
