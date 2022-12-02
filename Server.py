@@ -19,6 +19,7 @@ import SongFetcher as sf
 from SongFetcher import SONG_DIR
 import random
 from io import BufferedReader
+import json
 
 HOST = "127.0.0.1"  # loopback for working on cs112 server (TODO: customize)
 PACK_SIZE = 1024
@@ -41,44 +42,7 @@ def get_seeds(num_seeds):
     else:
         raise Exception(f"Couldn't find {SEED_FILE} in current directory")
 
-class Server:
-    def __init__(self, host_port):
-        self.s_s = 0 # socket for listening for new clients
-
-        self.clients = [] # list of client sockets
-
-        # basic server functionality
-        try: 
-            self.s_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.s_s.bind((HOST, host_port))
-            self.s_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.s_s.listen()
-        except Exception as e:
-            print(f"Network error: {str(e)}.\n")
-            sys.exit(0) 
-
-        self.song_buff = b"\0"
-        self.buff_len = -1
-        self.buff_ind = 0 # index of current spot in song_buff
-
-    def __del__(self):
-        self.s_s.close()
-
-
-    # write_frame()
-        # writes a frame of data to client on socket c_s
-    def write_frame(self, c_s, bytes):
-        # get subarray from [buff_ind, buff_ind + PACK_SIZE)
-
-        # write [buff_ind, buff_ind + PACK_SIZE) bytes to client
-        try:
-            num_sent = c_s.send(bytes)
-            return num_sent
-        except Exception:
-            print(f"Client disconnected")
-            return -1; # client connection may have dropped out
-
-    class Channel:
+class Channel:
         songs: list
         query: str
         clients: list
@@ -113,10 +77,53 @@ class Server:
             # Throw out wav header
             _ = self.open_file.read(44)
 
+class Server:
+    s_s: socket.socket
+    clients: list[socket.socket]
+    channels: list[Channel]
+
+    def __init__(self, host_port):
+        self.clients = [] # list of client sockets
+        self.channels = [] # list of channels
+
+        # basic server functionality
+        try: 
+            self.s_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.s_s.bind((HOST, host_port))
+            self.s_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.s_s.listen()
+        except Exception as e:
+            print(f"Network error: {str(e)}.\n")
+            sys.exit(0) 
+
+        self.song_buff = b"\0"
+        self.buff_len = -1
+        self.buff_ind = 0 # index of current spot in song_buff
+
+    def __del__(self):
+        self.s_s.close()
+
+    # write_frame()
+        # writes a frame of data to client on socket c_s
+    def write_frame(self, c_s, bytes):
+        # get subarray from [buff_ind, buff_ind + PACK_SIZE)
+
+        # write [buff_ind, buff_ind + PACK_SIZE) bytes to client
+        try:
+            num_sent = c_s.send(bytes)
+            return num_sent
+        except Exception:
+            return -1; # client connection may have dropped out
+
     def swap_client_channel(self, client, old_channel: Channel, new_channel: Channel):
         old_channel.clients.remove(client)
         new_channel.clients.append(client)
         print(f"Client {client} moved from channel {old_channel.query} to channel {new_channel.query}")
+
+    def print_channels(self):
+        for channel in self.channels:
+            print(f"Channel {channel.query}: {len(channel.clients)} clients")
+        print("-" * 20)
 
     # run_server()
         # given a port, runs ( name ) server: writes file in PACK_SIZE
@@ -132,12 +139,13 @@ class Server:
         # Build list of playlists
         # Each playlist will be used for a channel
         # The first channel will be the lobby
-        channels = [self.Channel(LOBBY_QUERY, 1)]
-        channels.extend(self.Channel(seed, 2) for seed in get_seeds(num_channels))
+        self.channels.append(Channel(LOBBY_QUERY, 1))
+        self.channels.extend([Channel(seed, 2) for seed in get_seeds(num_channels)])
+
+        self.print_channels()
 
         while True:
-            for channel in channels:
-                print(f"Channel {channel.query} has {len(channel.clients)} clients")
+            for channel in self.channels:
                 data = channel.open_file.read(PACK_SIZE)
                 while len(data) < PACK_SIZE:
                     channel.next()
@@ -146,15 +154,26 @@ class Server:
                     # Send song data to client...
                     if self.write_frame(c_s, data) == -1:
                         # and remove client if they disconnect
+                        print(f"Client disconnected")
                         channel.clients.remove(c_s)
-            print("-" * 20)
-            # Check for new clients with call to select()
-            rlist, _, _ = select.select([self.s_s], [], [], 0)
+                        self.clients.remove(c_s)
+                        c_s.close()
+                        self.print_channels()
+            # Check for new clients and data from clients with call to select()
+            rlist, _, _ = select.select([self.s_s] + self.clients, [], [], 0)
             for s in rlist:
+                # Server socket is ready to accept a new client
                 if s is self.s_s:
                     new_c_s, c_addr = self.s_s.accept()
                     # TODO: add client to channel of their choice, or a sentinel until they send a JOIN
-                    channels[0].clients.append(new_c_s)
+                    self.channels[0].clients.append(new_c_s)
+                    self.clients.append(new_c_s)
+                    self.print_channels()
+                # Client socket received data
+                else:
+                    packet = s.recv(PACK_SIZE)
+                    data = json.loads(packet)["data"]
+                    print(f"Received {data} from client")
             
             time.sleep(send_delay)
 
