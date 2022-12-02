@@ -122,7 +122,7 @@ class Server:
         # given a port, runs ( name ) server: writes file in PACK_SIZE
         # packets to client
         # TEST: file that's just over PACK_SIZE big
-    def run_server(self, channels=4):
+    def run_server(self, num_channels=4):
         
         # TODO: outline program flow to order recv / write / req SoundCloud
 
@@ -133,7 +133,7 @@ class Server:
         # Each playlist will be used for a channel
         # The first channel will be the lobby
         channels = [self.Channel(LOBBY_QUERY, 1)]
-        channels.extend(self.Channel(seed, 2) for seed in get_seeds(channels))
+        channels.extend(self.Channel(seed, 2) for seed in get_seeds(num_channels))
 
         while True:
             for channel in channels:
