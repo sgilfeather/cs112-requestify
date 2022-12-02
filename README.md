@@ -1,5 +1,9 @@
 # cs112-soundcloud
 
+## Requirements
+
+-   [Python 3.11](https://www.python.org/downloads/)
+
 ## Setup
 
 1. Install Python requirements: `pip install -r requirements.txt`
