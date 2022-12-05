@@ -2,3 +2,4 @@
 env/
 songs/
 __pycache__/
+.DS_Store
