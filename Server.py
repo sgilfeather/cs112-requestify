@@ -21,7 +21,6 @@ import Packet as pack
 
 import random
 import time
-from io import BufferedReader
 import json
 
 HOST = "127.0.0.1"  # loopback for working on cs112 server (TODO: customize)
@@ -60,7 +59,6 @@ class Channel:
     songs: list     # maintained list of songs
     query: str      # current query to SoundCloud 
     clients: list   # current clients, identified by socket fd 
-    open_file: BufferedReader   # current open song file
 
     def __init__(self, query, num_songs=1):
         self.songs = []
@@ -147,9 +145,9 @@ class Server:
         # given a port, runs ( name ) server: writes file in pack.PACK_SIZE
         # packets to client
         # TEST: file that's just over pack.PACK_SIZE big
-    def run_server(self, num_channels=4):
+    def run_server(self, num_channels=2):
         bitrate = 44100
-        send_delay = (pack.PACK_SIZE / 8) / bitrate
+        send_delay = pack.DATA_SIZE / bitrate / 8
 
         # Build list of playlists
         # Each playlist will be used for a channel
@@ -191,11 +189,17 @@ class Server:
                     self.channels[0].clients.append(new_c_s)
                     self.clients.append(new_c_s)
                     self.print_channels()
+                    chan_list = ",".join([channel.query for channel in self.channels])
+                    pack.write_packet(new_c_s, 2, chan_list)
 
                 # Client socket sent data to be read
                 else:
-                    packet = s.recv(pack.PACK_SIZE)
-                    print(f"Recieved {str(packet)}.")
+                    try:
+                        packet = s.recv(pack.PACK_SIZE)
+                        if packet:
+                            print(f"Recieved {str(packet)}.")
+                    except:
+                        continue
                     # data = json.loads(packet)["d"]
                     # print(f"Received {data} from client")
             

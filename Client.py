@@ -10,6 +10,7 @@
 #!/usr/bin/python3
 
 import os
+import select
 import sys
 import json
 import socket as socket
@@ -59,13 +60,13 @@ class Client:
         new_data = self.song_buff.consume(pack.PACK_SIZE)
         # buffer underflow, not enough song data; TODO send request
         if len(new_data) == 0:
-            print("Song_buff is empty")
-            raise sd.CallbackStop
+            print("Buffer underflow")
+            new_data = b'\0' * pack.PACK_SIZE
+
 
         assert len(new_data) == len(outdata)
         outdata[:len(new_data)] = new_data
         outdata[len(new_data):] = b'\0' * (len(outdata) - len(new_data))
-
 
     # run_client()
     # executes loop for recieving streamed server data
@@ -83,38 +84,56 @@ class Client:
         with stream:
            # to exit, curr_channel is set to -1 (error state)
             while self.curr_channel > -1:
-                type, data = pack.read_packet(self.c_s)
 
-                # for audio packet, type 1
-                if type == 1:
-                    # if we cannot append, song_buff is full
-                    if not self.song_buff.append(list(data)):
-                        print("Song_buff is full; skip ahead")
-                        
-                # for channel information packet, type 2
-                elif type == 2:
-                    # update list of channels
-                    self.chan_list = data
+                # Check if socket is readable
+                try:
+                    self.c_s.recv(1, socket.MSG_PEEK)
+                except BlockingIOError:
+                    pass
+                else:
+                    type, data = pack.read_packet(self.c_s)
+
+                    # for audio packet, type 1
+                    if type == 1:
+                        # if we cannot append, song_buff is full
+                        if not self.song_buff.append(list(data)):
+                            print("Song_buff is full; skip ahead")
+                            
+                    # for channel information packet, type 2
+                    elif type == 2:
+                        # update list of channels
+                        if data:
+                            self.chan_list = data.decode().split(",")
+                            print(f"Select a channel:")
+                            for i in range(0, len(self.chan_list)):
+                                print(f"{i + 1}) {self.chan_list[i]}")
 
                 # if in lobby, offer channel selections
-                if self.curr_channel == 0:
-                    answ = 0 
-                    while answ < 1 or answ > len(self.chan_list):
-                        print("˖⁺｡˚⋆˙" * 5)
-                        print(f"\nChoose a channel.")
-                        for i in range(0, len(self.chan_list)):
-                            print(f"{i + 1}) {self.chan_list[i]}")
+                if sys.stdin in select.select([sys.stdin], [], [], 0)[0]:
+                    line = sys.stdin.readline()
+                    if line:
+                        channel = int(line)
+                        if channel > 0 and channel <= len(self.chan_list):
+                            self.curr_channel = channel
+                            print(f"Selected channel {channel}")
+                            pack.write_packet(self.c_s, 3, str(channel).encode())
+                    # answ = 0 
+                    # while answ < 1 or answ > len(self.chan_list):
+                    #     print("˖⁺｡˚⋆˙" * 5)
+                    #     print(f"\nChoose a channel.")
+                    #     for i in range(0, len(self.chan_list)):
+                    #         print(f"{i + 1}) {self.chan_list[i]}")
 
-                        try:
-                            answ = int(input("... "))                          
-                        except ValueError as ve:
-                            answ = 0
+                    #     try:
+                    #         answ = int(input("... "))                          
+                    #     except ValueError as ve:
+                    #         answ = 0
 
                 # else, if on a channel, offer request input
-                else:
-                    print("˖⁺｡˚⋆˙" * 5)
-                    request = input(f"Make a vibe request (V), or choose a" +
-                                     " new channel (C).\n")
+                # else:
+                #     print("˖⁺｡˚⋆˙" * 5)
+                #     request = input(f"Make a vibe request (V), or choose a" +
+                #                      " new channel (C).\n")
 
 
 #

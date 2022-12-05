@@ -13,9 +13,9 @@ import json
 import binascii
 from math import floor
 
-PACK_SIZE = 1024
+PACK_SIZE = 1024 * 4
 DATA_SIZE = PACK_SIZE - 5
-BUFF_SIZE = PACK_SIZE * 4
+BUFF_SIZE = PACK_SIZE * 200
 
 # read_packet()
 # reads a single frame from server on a given socket, this_sock; then,
@@ -28,22 +28,16 @@ def read_packet(this_sock):
     type = -1
     data = ""
     try:
-        frame = this_sock.recv(PACK_SIZE) # make list
-        if len(frame) == 0: # no data recieved at this moment, return
+        header = this_sock.recv(5) # read header
+        pack_size = int.from_bytes(header[:4], 'big')
+        data = this_sock.recv(pack_size - 5) # make list
+        if len(data) == 0: # no data recieved at this moment, return
             return 0, ""
 
-        full_pack_len = int.from_bytes(frame[:4], 'big')
+        # full_pack_len = int.from_bytes(data[:4], 'big')
 
-        type = frame[4]
-        data = frame[5:]
-        print(data)
-    except json.JSONDecodeError as je:
-        print(f"Error: packet not JSON. Source: {je}")
-        return -1, ""
-    # packet is badly formatted
-    except KeyError as ke:
-        print(f"Error: packet badly formattted. Source: {str(data)}")
-        return -1, ""
+        type = int(header[4])
+        # data = data[5:full_pack_len]
     # client connection may have dropped out
     except Exception as e:
         print(f"Error: cannot process packet. Source: {str(e)}.")
@@ -70,12 +64,16 @@ def write_packet(this_sock, type, data):
     if type == 1: 
         byte_list = list(data)
         packet_list.extend(byte_list)
+    elif type == 2:
+        byte_list = list(data.encode())
+        packet_list.extend(byte_list)
 
     packet_list[:4] = len(packet_list).to_bytes(4, 'big')
     packet_bytes = bytes(packet_list)
     try:
         this_sock.send(packet_bytes);
     except Exception as e:
-        print(f"Error: can not write packet. Source: {str(e)}.")
+        # Client probably disconnected
+        return False
 
     return True

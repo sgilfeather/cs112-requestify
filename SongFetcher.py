@@ -9,7 +9,6 @@ import requests
 import os
 import dotenv
 from pydub import AudioSegment
-import ffmpeg
 from urllib.parse import urlencode
 
 MAX_RETRIES = 10
@@ -36,6 +35,7 @@ def search(query, limit=10, genre=""):
         "q": query,
         "limit": limit,
         "filter.genre_or_tag": genre,
+        "filter.duration": "short",
         "client_id": get_client_id(),
     }
     url = f"https://api-v2.soundcloud.com/search/tracks?" + urlencode(q_params)
