@@ -1,121 +1,120 @@
 #
 # CLIENT.PY
-# (Soundcloud / Application name )
-# Skylar Gilfeather, CS112 Fall 2022
+# (Soundcloud / Application name ) CS112, Fall 2022
 # 
 # Implementation of client in ( name ): connects to known ( name ) server,
 # and writes received data stream into a circular buffer
 #
 
+
 #!/usr/bin/python3
 
 import os
 import sys
+import json
 import socket as socket
 import sounddevice as sd
+from CircBuff import CircBuff
+import Packet as pack 
 
-STATE = 0
-PACK_SIZE = 1024
-BUFF_SIZE = PACK_SIZE * 4
 
 #
 # class Client
-# (description)
+# client for the 
+#
 class Client:
+    c_s: socket.socket
+    song_buff: CircBuff
+    curr_channel: int   # initialized to 0, lobby
+
 
     def __init__(self, host_addr, host_port):
-        self.c_s = -1  # init in run_client()
+        self.c_s = -1 
+        self.song_buff = CircBuff(pack.BUFF_SIZE)
+        self.curr_channel = 0
+        self.chan_list = []
 
         try:
             self.c_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.c_s.connect((host_addr, host_port))
+            self.c_s.setblocking(0)     # set to non-blocking
         except Exception as e:
-            print(f"Network error: {str(e)}.")
+            print(f"Client network error: {str(e)}.")
             sys.exit(0) 
 
         self.out_filename = "9851200.wav"
         # Remove the output file if it already exists
         if os.path.exists(self.out_filename):
             os.remove(self.out_filename)
-        # TODO: make CircBuff field here after testing CircBuff
+
 
     def __del__(self):
         if isinstance(self.c_s, socket.socket):
             self.c_s.close()
     
+
     def stream_callback(self, outdata, frames, time, status):
         if status:
             print(status, file=sys.stderr)
-        new_data = self.read_frame()
+        new_data = self.song_buff.consume(pack.PACK_SIZE)
+        # buffer underflow, not enough song data; TODO send request
         if len(new_data) == 0:
+            print("Song_buff is empty")
             raise sd.CallbackStop
+
         assert len(new_data) == len(outdata)
         outdata[:len(new_data)] = new_data
         outdata[len(new_data):] = b'\0' * (len(outdata) - len(new_data))
+
 
     # run_client()
     # executes loop for recieving streamed server data
     def run_client(self):
         stream = sd.RawOutputStream(
-            samplerate=44100, blocksize=int(PACK_SIZE / 4),
+            samplerate=44100, blocksize=int(pack.PACK_SIZE / 4),
             channels=2, dtype='int16',
             callback=self.stream_callback)
 
-        opts = [
-            "Make a request",
-            "Exit",
-        ]
+        # listen for init packets: first should contain lobby music,
+        # second should contain channel options 
+        print("˖⁺｡˚⋆˙" * 10)
+        print(f"\nWelcome to the client!\n")
 
         with stream:
-            while True:
-                print("#" * 20)
-                print("Welcome to the client!")
-                for (i, opt) in enumerate(opts):
-                    print(f"{i+1}) {opt}")
-                choice = input("Enter your choice: ")
-                match choice:
-                    case "1":
-                        req = input("Enter request: ")
-                    case "2":
-                        print("Exiting...")
-                        stream.abort()
-                        sys.exit(0)
+           # to exit, curr_channel is set to -1 (error state)
+            while self.curr_channel > -1:
+                type, data = pack.read_packet(self.c_s)
 
-    # read_frame()
-        # reads a single frame from server on client's socket, c_s, and writes
-        # it into client's circular buffer
-    def read_frame(self):
-        if not isinstance(self.c_s, socket.socket):
-            print("Error: client socket not initialized")
-            return b""
-        
-        try:
-            data = self.c_s.recv(PACK_SIZE) # make list
-        except Exception as e:
-            print(f"Read error: {str(e)}.")
-            STATE = -1
-            return b"" # client connection may have dropped out
+                # for audio packet, type 1
+                if type == 1:
+                    # if we cannot append, song_buff is full
+                    if not self.song_buff.append(list(data)):
+                        print("Song_buff is full; skip ahead")
+                        
+                # for channel information packet, type 2
+                elif type == 2:
+                    # update list of channels
+                    self.chan_list = data
 
-        len_data = len(list(data))
-        if len_data == 0: # no data recieved, return buffer of zeros
-            return b"\0" * PACK_SIZE
+                # if in lobby, offer channel selections
+                if self.curr_channel == 0:
+                    answ = 0 
+                    while answ < 1 or answ > len(self.chan_list):
+                        print("˖⁺｡˚⋆˙" * 5)
+                        print(f"\nChoose a channel.")
+                        for i in range(0, len(self.chan_list)):
+                            print(f"{i + 1}) {self.chan_list[i]}")
 
-        # calculate empty space left in circular buffer
-        # space_left = self.circ_buff.sublen(self.buff_tail, self.buff_head)
-        # if len_data > space_left:
-        #     # overflow! for now, return -1
-        #     print("Data overflow!\n")
-        #     return -1
-            
-        # otherwise, append data to circular buffer
-        # with open(self.out_filename, "ab") as f:
-        #     result = f.write(data)
-        #     print(f"Wrote {result} bytes to file")
-        # self.circ_buff.append(data, len_data)
+                        try:
+                            answ = int(input("... "))                          
+                        except ValueError as ve:
+                            answ = 0
 
-        return data
-        # return np.frombuffer(data, dtype=np.int8).reshape(-1, 1)
-
+                # else, if on a channel, offer request input
+                else:
+                    print("˖⁺｡˚⋆˙" * 5)
+                    request = input(f"Make a vibe request (V), or choose a" +
+                                     " new channel (C).\n")
 
 
 #

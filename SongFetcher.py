@@ -9,6 +9,7 @@ import requests
 import os
 import dotenv
 from pydub import AudioSegment
+import ffmpeg
 from urllib.parse import urlencode
 
 MAX_RETRIES = 10
@@ -24,6 +25,7 @@ def stubborn_get(url):
         response = requests.get(url)
         retries += 1
     return response
+
 
 # search()
 # given a search query and limit on max # of results to return, makes a GET

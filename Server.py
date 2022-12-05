@@ -1,12 +1,12 @@
 #
 # SERVER.PY
-# (Soundcloud / Application name )
-# Skylar Gilfeather, CS112 Fall 2022
+# (Soundcloud / Application name ) CS112, Fall 2022
 # 
 # Implementation of server in ( name ): connects, binds, and listens on a
 # specified connection host for clients. Requests song data from SoundCloud
 # using the SongFetcher module and streams data down to clients while
 # listening for new clients
+#
 
 #!/usr/bin/python3
 
@@ -14,23 +14,31 @@ import sys
 import os
 import socket as socket
 import select
-import time
+
 import SongFetcher as sf
 from SongFetcher import SONG_DIR
+import Packet as pack 
+
 import random
+import time
 from io import BufferedReader
 import json
 
 HOST = "127.0.0.1"  # loopback for working on cs112 server (TODO: customize)
-PACK_SIZE = 1024
+
 STATE = 0
     # STATE: -1 = quit / error, 0 = listening for new client
     #        1 = receiving from client, 2 = streaming to client
     #        3 = recieving from SoundCloud, 4 = requesting to SoundCloud   
 
 SEED_FILE = "seeds.txt"
-LOBBY_QUERY = "PokéCenter"
+LOBBY_QUERY = "PokéCenter" 
 
+
+# get_seeds()
+# parses seed file in project root directory, and returns the first
+# num_seeds seeds extracted.
+#
 def get_seeds(num_seeds):
     if os.path.exists(SEED_FILE):
         with open(SEED_FILE, "r") as f:
@@ -42,41 +50,58 @@ def get_seeds(num_seeds):
     else:
         raise Exception(f"Couldn't find {SEED_FILE} in current directory")
 
+
+# class Channel
+# records a list of current listening clients, and a queue of songs
+# (filenames). maintains a non-empty playlist of songs; on next(), the 
+# next song is opened as BufferedReader open_file
+#
 class Channel:
-        songs: list
-        query: str
-        clients: list
-        open_file: BufferedReader
+    songs: list     # maintained list of songs
+    query: str      # current query to SoundCloud 
+    clients: list   # current clients, identified by socket fd 
+    open_file: BufferedReader   # current open song file
 
-        def __init__(self, query, num_songs=1):
-            self.songs = []
-            self.query = query
-            self.clients = []
-            self.fill(num_songs)
-            next_song = self.songs.pop(0)
-            self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
-            # Throw out wav header
-            _ = self.open_file.read(44)
+    def __init__(self, query, num_songs=1):
+        self.songs = []
+        self.query = query
+        self.clients = []
+        print(f"new channel: {query}")
         
-        def __del__(self):
-            if self.open_file:
-                self.open_file.close()
+        self.fill(num_songs)
 
-        def fill(self, num_songs=1):
-            search_results = sf.search(self.query, num_songs)
-            for result in search_results:
-                self.songs.append(sf.download_song(result))
-        
-        def next(self):
-            if self.open_file:
-                self.open_file.close()
-            if len(self.songs) == 0:
-                self.fill()
-            next_song = self.songs.pop(0)
-            self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
-            # Throw out wav header
-            _ = self.open_file.read(44)
+        next_song = self.songs.pop(0)
+        self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
+        # throw out wav header
+        _ = self.open_file.read(44)
+    
+    def __del__(self):
+        if self.open_file:
+            self.open_file.close()
 
+    # fill()
+    # for each song retrieved from SongFetcher query, download its audio
+    # byte data and append it to songs list 
+    def fill(self, num_songs=1):
+        search_results = sf.search(self.query, num_songs)
+        for result in search_results:
+            self.songs.append(sf.download_song(result))
+    
+    def next(self):
+        if self.open_file:
+            self.open_file.close()
+
+        if len(self.songs) == 0:
+            self.fill()
+        next_song = self.songs.pop(0)
+        self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
+        # Throw out wav header
+        _ = self.open_file.read(44)
+
+
+# class Server
+#
+#
 class Server:
     s_s: socket.socket
     clients: list[socket.socket]
@@ -96,45 +121,35 @@ class Server:
             print(f"Network error: {str(e)}.\n")
             sys.exit(0) 
 
-        self.song_buff = b"\0"
-        self.buff_len = -1
-        self.buff_ind = 0 # index of current spot in song_buff
 
     def __del__(self):
         self.s_s.close()
 
-    # write_frame()
-        # writes a frame of data to client on socket c_s
-    def write_frame(self, c_s, bytes):
-        # get subarray from [buff_ind, buff_ind + PACK_SIZE)
 
-        # write [buff_ind, buff_ind + PACK_SIZE) bytes to client
-        try:
-            num_sent = c_s.send(bytes)
-            return num_sent
-        except Exception:
-            return -1; # client connection may have dropped out
+    # swap_client_channel()
+    # moves client from old channel, old_ch, to new channel, new_ch
+    def swap_client_channel(self, client, old_ch: Channel, new_ch: Channel):
+        old_ch.clients.remove(client)
+        new_ch.clients.append(client)
+        print(f"Client {client} moved from channel {old_ch.query} to \
+                channel {new_ch.query}")
 
-    def swap_client_channel(self, client, old_channel: Channel, new_channel: Channel):
-        old_channel.clients.remove(client)
-        new_channel.clients.append(client)
-        print(f"Client {client} moved from channel {old_channel.query} to channel {new_channel.query}")
 
+    # print_channels()
+    # prints diagnostic information about each client on each channel
     def print_channels(self):
         for channel in self.channels:
             print(f"Channel {channel.query}: {len(channel.clients)} clients")
         print("-" * 20)
 
-    # run_server()
-        # given a port, runs ( name ) server: writes file in PACK_SIZE
-        # packets to client
-        # TEST: file that's just over PACK_SIZE big
-    def run_server(self, num_channels=4):
-        
-        # TODO: outline program flow to order recv / write / req SoundCloud
 
+    # run_server()
+        # given a port, runs ( name ) server: writes file in pack.PACK_SIZE
+        # packets to client
+        # TEST: file that's just over pack.PACK_SIZE big
+    def run_server(self, num_channels=4):
         bitrate = 44100
-        send_delay = (PACK_SIZE / 8) / bitrate
+        send_delay = (pack.PACK_SIZE / 8) / bitrate
 
         # Build list of playlists
         # Each playlist will be used for a channel
@@ -144,36 +159,45 @@ class Server:
 
         self.print_channels()
 
+        # TODO: while server doesn't recieve shutdown signal
         while True:
             for channel in self.channels:
-                data = channel.open_file.read(PACK_SIZE)
-                while len(data) < PACK_SIZE:
+
+                # write a packet of data for this channel's current song
+                data = channel.open_file.read(pack.DATA_SIZE)
+
+                while len(data) < pack.DATA_SIZE:
                     channel.next()
-                    data += channel.open_file.read(PACK_SIZE - len(data))
+                    data += channel.open_file.read(pack.DATA_SIZE - len(data))
+
                 for c_s in channel.clients:
-                    # Send song data to client...
-                    if self.write_frame(c_s, data) == -1:
+                    # Send song packet to all clients on channel
+                    if not pack.write_packet(c_s, 1, data):
                         # and remove client if they disconnect
                         print(f"Client disconnected")
                         channel.clients.remove(c_s)
                         self.clients.remove(c_s)
                         c_s.close()
                         self.print_channels()
-            # Check for new clients and data from clients with call to select()
+
+            # check for new clients and data from clients
             rlist, _, _ = select.select([self.s_s] + self.clients, [], [], 0)
+
             for s in rlist:
                 # Server socket is ready to accept a new client
                 if s is self.s_s:
                     new_c_s, c_addr = self.s_s.accept()
-                    # TODO: add client to channel of their choice, or a sentinel until they send a JOIN
+                    # add new client to the lobby channel
                     self.channels[0].clients.append(new_c_s)
                     self.clients.append(new_c_s)
                     self.print_channels()
-                # Client socket received data
+
+                # Client socket sent data to be read
                 else:
-                    packet = s.recv(PACK_SIZE)
-                    data = json.loads(packet)["data"]
-                    print(f"Received {data} from client")
+                    packet = s.recv(pack.PACK_SIZE)
+                    print(f"Recieved {str(packet)}.")
+                    # data = json.loads(packet)["d"]
+                    # print(f"Received {data} from client")
             
             time.sleep(send_delay)
 
