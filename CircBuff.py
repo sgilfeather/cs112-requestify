@@ -11,6 +11,7 @@
 # 
 # inner class CircBuff: 
 # (description)
+
 class CircBuff:
     def __init__(self, len):
         # TODO: enforce non-negative length?
@@ -78,7 +79,7 @@ class CircBuff:
             self.circ_buff[self.buff_head : self.buff_head + num] = [0] * num
             self.buff_head = self.buff_head + num
 
-            return got_data
+        return got_data
 
     # reset()
         # clear circular buffer

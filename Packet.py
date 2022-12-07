@@ -3,19 +3,67 @@
 # (Soundcloud / Application name ) CS112, Fall 2022
 #
 #
-# PACKET: (length) (type) (bytes)
-#   type 1 = audio data
-#   type 2 = channel list
+# Each packet starts with [ total packet len, 2 bytes ] [ type, 1 byte ]
+#
+# Type 1 packet is structured as follows:
+#   [ total len, 2 ] [ type, 1 ] [ host audio port, 2 ] [ # of channels, 1]
+#   then, each channel name in succession: [ n a m e \0 ] [ m o r e \0 ]
+#
 #
 
 import socket
 import json
-import binascii
 from math import floor
 
-PACK_SIZE = 1024
-DATA_SIZE = PACK_SIZE - 5
-BUFF_SIZE = PACK_SIZE * 4
+
+BITRATE = 44100
+DATA_BYTE = 2   # number of bytes in header to describe pack length
+AUDIO_PACK = 1024
+SEND_DELAY = (AUDIO_PACK / 8) / BITRATE
+
+
+# construct_packet()
+# given an integer type and JSON-friendly data, construct a JSON packet
+# and convert it into a byte packet
+def construct_packet(type, data):
+    json_bytes = ""
+    try:
+        json_str = json.dumps({"t":type, "d":data})
+        json_bytes = bytes(json_str, 'utf-8')
+    except TypeError as te:
+        print(f"Cannot send data: invalid data type for packet.")
+        return b"\0"   # null
+
+    # data is type audio bytes
+    max_bytes = (2 ** (8 * DATA_BYTE) - 1)
+    if len(json_bytes) > max_bytes:
+        print(f"Cannot send data: length {len(json_bytes)} exceeds max packet size {max_bytes}")
+        return b"\0"   # null
+
+    len_bytes = len(json_bytes).to_bytes(DATA_BYTE, 'big')
+    return len_bytes + json_bytes
+
+
+# construct_packet()
+# given a byte string type containing JSON data, deconstruct it back into
+# a JSON object, returning the "type" and "data" values from this JSON
+def deconstruct_packet(packet_bytes):
+    try:
+        json_str = packet_bytes.decode('utf-8')
+        json_data = json.loads(json_str)
+        return json_data["t"], json_data["d"]
+    except json.JSONDecodeError as je:
+        print(f"Error: packet not JSON. Source: {je}")
+        return -1, ""
+    # packet is badly formatted
+    except KeyError as ke:
+        print(f"Error: packet badly formattted. Packet: {data}")
+        return -1, ""
+    # client connection may have dropped out
+    except Exception as e:
+        print(f"Error: cannot process packet. Source: {e}.")
+        return -1, ""
+
 
 # read_packet()
 # reads a single frame from server on a given socket, this_sock; then,
@@ -25,32 +73,28 @@ def read_packet(this_sock):
         print(f"Error: socket {this_sock} not initialized")
         return -1, ""
 
-    type = -1
-    data = ""
-    try:
-        frame = this_sock.recv(PACK_SIZE) # make list
+    try:    # first, read the packet from stream
+        frame = this_sock.recv(DATA_BYTE)
         if len(frame) == 0: # no data recieved at this moment, return
             return 0, ""
 
-        full_pack_len = int.from_bytes(frame[:4], 'big')
+        # recieve full header
+        while len(frame) < DATA_BYTE:
+            frame += this_sock.recv(DATA_BYTE - len(frame))
 
-        type = frame[4]
-        data = frame[5:]
-        print(data)
-    except json.JSONDecodeError as je:
-        print(f"Error: packet not JSON. Source: {je}")
-        return -1, ""
-    # packet is badly formatted
-    except KeyError as ke:
-        print(f"Error: packet badly formattted. Source: {str(data)}")
-        return -1, ""
-    # client connection may have dropped out
+        packet_len = int.from_bytes(frame, 'big')
+
+        # now, read packet in entirety
+        packet_bytes =  this_sock.recv(packet_len)
+        while len(packet_bytes) < packet_len:
+            packet_bytes += this_sock.recv(packet_len - len(packet_bytes))  
+
     except Exception as e:
-        print(f"Error: cannot process packet. Source: {str(e)}.")
-        return -1, ""
+        print(f"Error: can not read packet. Source: {str(e)}.")
+        return False
 
-    # TODO: validate type to payload (data) type
-    return type, data
+    # now, decode the packet into JSON; returns type, data
+    return deconstruct_packet(packet_bytes)
 
 
 # write_packet()
@@ -62,20 +106,18 @@ def write_packet(this_sock, type, data):
     if not isinstance(this_sock, socket.socket):
         print(f"Error: socket {this_sock} not initialized")
         return False
-    # TODO: enforce that data is DATA_SIZE or less?
 
-    packet_list = [0, 0, 0, 0, type]
+    packet_bytes = construct_packet(type, data)
+    if packet_bytes == b"\0":
+        return False
 
-    # data is type audio bytes
-    if type == 1: 
-        byte_list = list(data)
-        packet_list.extend(byte_list)
-
-    packet_list[:4] = len(packet_list).to_bytes(4, 'big')
-    packet_bytes = bytes(packet_list)
     try:
-        this_sock.send(packet_bytes);
+        sent = this_sock.send(packet_bytes);
+        while sent < len(packet_bytes):
+            new_sent = this_sock.send(packet_bytes[sent:])
+            sent = sent + new_sent
     except Exception as e:
         print(f"Error: can not write packet. Source: {str(e)}.")
+        return False
 
     return True

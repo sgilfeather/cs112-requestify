@@ -103,27 +103,29 @@ class Channel:
 #
 #
 class Server:
-    s_s: socket.socket
+    host_s: socket.socket
     clients: list[socket.socket]
     channels: list[Channel]
 
-    def __init__(self, host_port):
+    def __init__(self, host_port, audio_port):
+        self.host_s = 0
+        self.stream_s = 0
         self.clients = [] # list of client sockets
         self.channels = [] # list of channels
 
         # basic server functionality
         try: 
-            self.s_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.s_s.bind((HOST, host_port))
-            self.s_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self.s_s.listen()
+            self.host_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.host_s.bind((HOST, host_port))
+            self.host_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            self.host_s.listen()
         except Exception as e:
             print(f"Network error: {str(e)}.\n")
             sys.exit(0) 
 
 
     def __del__(self):
-        self.s_s.close()
+        self.host_s.close()
 
 
     # swap_client_channel()
@@ -143,13 +145,24 @@ class Server:
         print("-" * 20)
 
 
+    # write_frame()
+        # writes a frame of data to client on socket c_s
+    def write_frame(self, c_s, data):
+        try:
+            num_sent = c_s.send(data)
+            return num_sent
+        except Exception:
+            print(f"Client disconnected")
+            return -1; # client connection may have dropped out
+
+
     # run_server()
-        # given a port, runs ( name ) server: writes file in pack.PACK_SIZE
+        # given a port, runs ( name ) server: writes file in pack.AUDIO_PACK
         # packets to client
-        # TEST: file that's just over pack.PACK_SIZE big
+        # TEST: file that's just over pack.AUDIO_PACK big
     def run_server(self, num_channels=4):
         bitrate = 44100
-        send_delay = (pack.PACK_SIZE / 8) / bitrate
+        send_delay = (pack.AUDIO_PACK / 8) / bitrate
 
         # Build list of playlists
         # Each playlist will be used for a channel
@@ -164,15 +177,15 @@ class Server:
             for channel in self.channels:
 
                 # write a packet of data for this channel's current song
-                data = channel.open_file.read(pack.DATA_SIZE)
+                data = channel.open_file.read(pack.AUDIO_PACK)
 
-                while len(data) < pack.DATA_SIZE:
+                while len(data) < pack.AUDIO_PACK:
                     channel.next()
-                    data += channel.open_file.read(pack.DATA_SIZE - len(data))
+                    data += channel.open_file.read(pack.AUDIO_PACK - len(data))
 
                 for c_s in channel.clients:
                     # Send song packet to all clients on channel
-                    if not pack.write_packet(c_s, 1, data):
+                    if self.write_frame(c_s, data) == -1:
                         # and remove client if they disconnect
                         print(f"Client disconnected")
                         channel.clients.remove(c_s)
@@ -181,12 +194,12 @@ class Server:
                         self.print_channels()
 
             # check for new clients and data from clients
-            rlist, _, _ = select.select([self.s_s] + self.clients, [], [], 0)
+            rlist, _, _ = select.select([self.host_s] + self.clients, [], [], 0)
 
             for s in rlist:
                 # Server socket is ready to accept a new client
-                if s is self.s_s:
-                    new_c_s, c_addr = self.s_s.accept()
+                if s is self.host_s:
+                    new_c_s, c_addr = self.host_s.accept()
                     # add new client to the lobby channel
                     self.channels[0].clients.append(new_c_s)
                     self.clients.append(new_c_s)
@@ -194,20 +207,21 @@ class Server:
 
                 # Client socket sent data to be read
                 else:
-                    packet = s.recv(pack.PACK_SIZE)
+                    packet = s.recv(pack.AUDIO_PACK)
                     print(f"Recieved {str(packet)}.")
                     # data = json.loads(packet)["d"]
                     # print(f"Received {data} from client")
             
-            time.sleep(send_delay)
+            time.sleep(pack.SEND_DELAY)
 
 #
 # MAIN: get cmd-line arguments and run server
 #
-if len(sys.argv) != 2:
-    print("Usage: python3 Server.py <server port>")
+if len(sys.argv) != 3:
+    print("Usage: python3 Server.py <host port> <audio port>")
     quit()
 
 host_port = sys.argv[1]
-server = Server(int(host_port))
+audio_port = sys.argv[2]
+server = Server(int(host_port), int(audio_port))
 server.run_server()

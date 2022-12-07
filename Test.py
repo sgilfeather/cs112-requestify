@@ -6,39 +6,60 @@
 # Helper to unit-test ( name ) functions
 #
 
-from CircBuff import CircBuff
+import sys
+import socket
+import Packet as packet
 
-def testCircBuff():
-    cbuff = CircBuff(8);
-    cbuff.append([1, 2, 3, 4])
-    print(*cbuff.circ_buff)
-    
-    cbuff.append([5, 6])
-    print(*cbuff.circ_buff)
-    print(f"head: {cbuff.buff_head}, tail: {cbuff.buff_tail}")
-    
-    cbuff.consume(3)
-    print(*cbuff.circ_buff)
-    print(f"head: {cbuff.buff_head}, tail: {cbuff.buff_tail}")
-    
-    cbuff.append([7, 8, 9, 10, 11])
-    print(*cbuff.circ_buff)
-    if not cbuff.append([12]):
-        print("Good: cannot append, buffer full")
-    
-    cbuff.reset()
-    if not cbuff.consume(1):
-        print("Good: cannot consume, buffer empty")
+def init_client_server(port):
+    try:
+        # set up server
+        s_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s_s.bind(( "127.0.0.1", port))
+        s_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s_s.listen()
 
+        # set up client
+        c_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        c_s.connect(("127.0.0.1", port))
+
+        s_to_c, _ = s_s.accept()
+
+        return c_s, s_s, s_to_c     # return client, server socket descriptors
+    except Exception as e:
+        print(f"Error: could not initialize client and server. Source: {str(e)}")
+        return -1, -1
+
+
+def close_client_server(c_s, s_s, s_to_c):
+    try:
+        c_s.close()
+        s_s.close()
+    except Exception as e:
+        print(f"Error: could not close client and server. Source: {str(e)}")
+
+
+def test_packet(port):
+    # test construct and deconstruct
+    pack_bytes = packet.construct_packet(1, [8000, 2, "lofi", "hiphop"])
+    print(pack_bytes)
+
+    pack_bytes = pack_bytes[packet.DATA_BYTE:] # throw out len header
+    out_type, out_data = packet.deconstruct_packet(pack_bytes)
+    print(f"Got type {out_type} and data {out_data}")
+
+    # test sending over client server
+    
+    c_s, s_s, s_to_c = init_client_server(port)
+    packet.write_packet(s_to_c, out_type, out_data)
+    read_type, read_data = packet.read_packet(c_s)
+    print(f"Client read type {read_type} and data {read_data}")
+
+    close_client_server(c_s, s_s, s_to_c)
 
 
 # MAIN
-all_test_funcs = [ testCircBuff ]
-num_tests = len(all_test_funcs)
+if len(sys.argv) != 2:
+    print("Usage: python3 Test.py <test port>")
+    quit()
 
-# run all functions
-# TODO: add catching and printing exception functionality
-print("\nRunning tests...\n");
-for i in range(0, num_tests):
-    print(f"[{i}]: {all_test_funcs[i].__name__}")
-    all_test_funcs[i]()
+test_packet(int(sys.argv[1]))
