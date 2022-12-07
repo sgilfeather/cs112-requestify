@@ -3,11 +3,18 @@
 # (Soundcloud / Application name ) CS112, Fall 2022
 #
 #
-# Each packet starts with [ total packet len, 2 bytes ] [ type, 1 byte ]
+# Each packet is structured as follows:
+#   [ data len, DATA_BYTE bytes ] [ json data, data len bytes]
 #
-# Type 1 packet is structured as follows:
-#   [ total len, 2 ] [ type, 1 ] [ host audio port, 2 ] [ # of channels, 1]
-#   then, each channel name in succession: [ n a m e \0 ] [ m o r e \0 ]
+# SERVER PACKETS:
+#   Type 1: Init / Setup. Contains list of channels:
+#       [ "channel_1", ...  "channel_num"]
+#   
+#
+# CLIENT PACKETS: 
+#   Type 2: Init / Setup. Contains port for comm channel and chosen channel,
+#   if a channel has been selected
+#       [ communication port ]
 #
 #
 
@@ -20,6 +27,10 @@ BITRATE = 44100
 DATA_BYTE = 2   # number of bytes in header to describe pack length
 AUDIO_PACK = 1024
 SEND_DELAY = (AUDIO_PACK / 8) / BITRATE
+
+# packet types
+S_INIT = 1
+C_INIT = 2
 
 
 # construct_packet()
@@ -91,7 +102,7 @@ def read_packet(this_sock):
 
     except Exception as e:
         print(f"Error: can not read packet. Source: {str(e)}.")
-        return False
+        return -1, ""
 
     # now, decode the packet into JSON; returns type, data
     return deconstruct_packet(packet_bytes)

@@ -12,11 +12,17 @@ import os
 import sys
 import json
 import time
+import string
+import random
+
+import select
 import socket as socket
 import sounddevice as sd
-from CircBuff import CircBuff
 import Packet as pack 
 
+
+SELF = "127.0.0.1"  # loopback for hosting oneself
+NONCE_VALS = string.ascii_uppercase + string.ascii_lowercase + string.digits
 
 #
 # class Client
@@ -25,22 +31,27 @@ import Packet as pack
 class Client:
     aud_s: socket.socket
     com_s: socket.socket
-    song_buff: CircBuff
+    nonce: string
     curr_channel: int   # initialized to 0, lobby
 
 
     def __init__(self, host_addr, host_port):
-        self.aud_s = -1 
-        self.com_s = -1 
+        self.aud_s = -1     # receives audio data
+        self.com_s = -1     # writes and reads messages to / from server
+        self.nonce = ''.join(random.choices(''.join(NONCE_VALS), k=4))
+        
+        self.host_addr = host_addr
+        self.host_port = host_port
+
         self.curr_channel = 0
         self.chan_list = []
 
-        # TODO: for now, just setting up audio stream
+        # TODO: for now, just setting up audio streams
         try:
-            self.aud_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.aud_s.connect((host_addr, host_port))
+            self.com_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.com_s.connect((host_addr, host_port))
         except Exception as e:
-            print(f"Client network error: {str(e)}.")
+            print(f"Client network error for audio sock: {str(e)}.")
             sys.exit(0) 
 
         self.out_filename = "9851200.wav"
@@ -50,6 +61,9 @@ class Client:
 
 
     def __del__(self):
+        if isinstance(self.com_s, socket.socket):
+            self.com_s.close()
+
         if isinstance(self.aud_s, socket.socket):
             self.aud_s.close()
     
@@ -65,6 +79,26 @@ class Client:
         outdata[len(new_data):] = b'\0' * (len(outdata) - len(new_data))
 
 
+    # send_init_packet()
+    # set up client's channel list, and set up a separate communications
+    # port for the c_s
+    def send_init_packet(self, data):
+        # data should be the list ["channel_1", ... "channel_len"]
+        self.chan_list = data
+        # associate both aud_s and com_s on serverside with given nonce
+        pack.write_packet(self.com_s, pack.C_INIT, ["com", self.nonce])
+
+        # setup new port for communications
+        try:
+            self.aud_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.aud_s.connect((self.host_addr, self.host_port))
+        except Exception as e:
+            print(f"Client network error for comm sock: {str(e)}.")
+            sys.exit(0) 
+
+        pack.write_packet(self.aud_s, pack.C_INIT, ["aud", self.nonce])
+        
+
     # run_client()
     # executes loop for recieving streamed server data
     def run_client(self):
@@ -73,16 +107,24 @@ class Client:
             channels=2, dtype='int16',
             callback=self.stream_callback)
 
-        # listen for init packets: first should contain lobby music,
-        # second should contain channel options 
         print("˖⁺｡˚⋆˙" * 10)
         print(f"\nWelcome to the client!\n")
    
+        # listen for init packets: first packet on com_s stream should
+        # contain setup comm port with channel options
+        type, data = pack.read_packet(self.com_s)
+        if type != pack.S_INIT:
+            print(f"Error: did not recieve init packet from server.")
+            return
+        
+        self.send_init_packet(data) 
 
         with stream:
            # to exit, curr_channel is set to -1 (error state)
             while self.curr_channel > -1:
-                time.sleep(1)
+                # check for input messages
+                
+                rlist, _, _ = select.select([sys.stdin, self.com_s], [], [], 0)
 
 
     # read_frame()
