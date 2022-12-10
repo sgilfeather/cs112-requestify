@@ -26,11 +26,16 @@ from math import floor
 BITRATE = 44100
 DATA_BYTE = 2   # number of bytes in header to describe pack length
 AUDIO_PACK = 1024
-SEND_DELAY = (AUDIO_PACK / 8) / BITRATE
+SEND_DELAY = ((AUDIO_PACK / 8) / BITRATE) / 2
 
 # packet types
 S_INIT = 1
 C_INIT = 2
+S_MSG = 3
+C_MSG = 4
+
+C_JOIN = 5
+C_LIST = 6
 
 
 # construct_packet()

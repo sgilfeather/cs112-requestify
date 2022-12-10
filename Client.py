@@ -93,11 +93,31 @@ class Client:
             self.aud_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.aud_s.connect((self.host_addr, self.host_port))
         except Exception as e:
-            print(f"Client network error for comm sock: {str(e)}.")
+            print(f"Client network error for com sock: {str(e)}.")
             sys.exit(0) 
 
         pack.write_packet(self.aud_s, pack.C_INIT, ["aud", self.nonce])
-        
+
+    def print_menu(self):
+        print("˖⁺｡˚⋆˙" * 10)
+        print("\tjoin <channel>")
+        print("\tlist")
+        print("\texit")
+        print("Choose an option:")
+    
+    def join_channel(self, query):
+        pack.write_packet(self.com_s, pack.C_JOIN, query)   # TODO: if returns -1
+
+    def print_channels(self):
+        pass
+
+
+    def client_handle_packet(self, type, data):
+        if type == pack.S_INIT:
+            self.chan_list = data
+        # elif type == pack.S_MSG:
+        #     print(f"Recieved from server: {data}")
+
 
     # run_client()
     # executes loop for recieving streamed server data
@@ -109,9 +129,10 @@ class Client:
 
         print("˖⁺｡˚⋆˙" * 10)
         print(f"\nWelcome to the client!\n")
+        self.print_menu()
    
         # listen for init packets: first packet on com_s stream should
-        # contain setup comm port with channel options
+        # contain setup com port with channel options
         type, data = pack.read_packet(self.com_s)
         if type != pack.S_INIT:
             print(f"Error: did not recieve init packet from server.")
@@ -125,7 +146,25 @@ class Client:
                 # check for input messages
                 
                 rlist, _, _ = select.select([sys.stdin, self.com_s], [], [], 0)
-
+                for s in rlist:
+                    if sys.stdin in rlist:
+                        line = sys.stdin.readline()
+                        line = line.strip()
+                        if line.startswith("join "):
+                            self.join_channel(line[5:])
+                        elif line == "list":
+                            self.print_channels()
+                        elif line == "quit" or line == "exit":
+                            self.curr_channel = -1
+                        else:
+                            print("Invalid option")
+                        self.print_channels()
+                    else:
+                        # TODO: remove MSG writing
+                        # pack.write_packet(s, pack.C_MSG, "Hello server!")
+                        type, data = pack.read_packet(s)  # read packet from s
+                        if type != -1:
+                            self.client_handle_packet(type, data)
 
     # read_frame()
         # reads a single audio frame from the server's audio socket to the

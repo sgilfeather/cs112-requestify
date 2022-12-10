@@ -12,18 +12,24 @@ from pydub import AudioSegment
 import ffmpeg
 from urllib.parse import urlencode
 
-MAX_RETRIES = 10
+MAX_RETRIES = 2
 SONG_DIR = "songs"
 
 # stubborn_get()
 # Given a url for a GET req, attempts up to MAX_RETRIES GET requests for
 # a successful response
 def stubborn_get(url):
-    response = requests.get(url)
+    response = requests.get(url, timeout=5)
     retries = 0
+    print(f"status code is {response.status_code }")
+
     while response.status_code != 200 and retries < MAX_RETRIES:
-        response = requests.get(url)
+        response = requests.get(url, timeout=5)
         retries += 1
+        if response.status_code != 200:
+            print(f"Failed to get {url}, retrying")
+    if retries == MAX_RETRIES:
+        print(f"Failed to get {url} after {MAX_RETRIES} retries")
     return response
 
 
@@ -36,10 +42,13 @@ def search(query, limit=10, genre=""):
         "q": query,
         "limit": limit,
         "filter.genre_or_tag": genre,
+        "filter.duration": "short",
         "client_id": get_client_id(),
     }
     url = f"https://api-v2.soundcloud.com/search/tracks?" + urlencode(q_params)
     response = stubborn_get(url)
+    if response.status_code != 200:
+        return []
     return response.json()["collection"]
 
 

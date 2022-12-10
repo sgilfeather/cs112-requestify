@@ -67,18 +67,21 @@ class Channel:
         self.songs = []
         self.query = query
         self.clients = []
+        self.open_file = None
         print(f"new channel: {query}")
         
         self.fill(num_songs)
 
-        next_song = self.songs.pop(0)
-        self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
-        # throw out wav header
-        _ = self.open_file.read(44)
+        if len(self.songs) > 0:
+            next_song = self.songs.pop(0)
+            self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
+            # throw out wav header
+            _ = self.open_file.read(44)
     
     def __del__(self):
         if self.open_file:
             self.open_file.close()
+
 
     # fill()
     # for each song retrieved from SongFetcher query, download its audio
@@ -86,8 +89,12 @@ class Channel:
     def fill(self, num_songs=1):
         search_results = sf.search(self.query, num_songs)
         for result in search_results:
-            self.songs.append(sf.download_song(result))
+            song = sf.download_song(result)
+            if song is None:
+                continue
+            self.songs.append(song)
     
+
     def next(self):
         if self.open_file:
             self.open_file.close()
@@ -112,8 +119,9 @@ class Server:
         self.host_s = 0
         self.clients = [] # list of client sockets
         self.channels = [] # list of channels
-        self.client_map = {}    # maps client audio c_s's to comm c_s's
+        self.client_map = {}    # maps client audio c_s's to com c_s's
 
+        print("About to open the server socket.")
         # basic server functionality
         try: 
             self.host_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -129,19 +137,23 @@ class Server:
         self.host_s.close()
 
 
-    # swap_client_channel()
-    # moves client from old channel, old_ch, to new channel, new_ch
-    def swap_client_channel(self, client, old_ch: Channel, new_ch: Channel):
-        old_ch.clients.remove(client)
+    # move_client()
+    # moves client from their current channel to new channel, new_ch
+    def move_client(self, client, new_ch: Channel):
+        for channel in self.channels:
+            if client in channel.clients:
+                channel.clients.remove(client)
         new_ch.clients.append(client)
-        print(f"Client {client} moved from channel {old_ch.query} to \
-                channel {new_ch.query}")
+        
+        print(f"Client moved to channel {new_ch.query}")
+        self.print_channels()
 
 
     # print_channels()
     # prints diagnostic information about each client on each channel
     def print_channels(self):
         for channel in self.channels:
+            # TODO: not printing out length of channel?
             print(f"Channel {channel.query}: {len(channel.clients)} clients")
         print("-" * 20)
 
@@ -168,47 +180,61 @@ class Server:
     # handles C_INIT packet
     def help_handle_cinit(self, data, this_sock):
         # data[0] is "com" or "aud", data[1] is temp nonce
-        # if nonce value is in map, finish the comm : audio mapping
+        # if nonce value is in map, finish the com : audio mapping
         nonce = data[1]
         if nonce in self.client_map:
-            # if comm socket connected first
+            # if com socket connected first
             aud_sock = 0
-            comm_sock = 0
+            com_sock = 0
             if self.client_map[nonce][0] == "com":
-                comm_sock = self.client_map[nonce][1]
-                # map comm sock to audio sock
-                self.client_map[comm_sock] = this_sock
+                com_sock = self.client_map[nonce][1]
+                # map com sock to audio sock
+                self.client_map[com_sock] = this_sock
                 aud_sock = this_sock
 
             elif self.client_map[nonce][0] == "aud":
                 aud_sock = self.client_map[nonce][1]
-                # map comm sock to audio sock
+                # map com sock to audio sock
                 self.client_map[this_sock] = aud_sock
 
             self.client_map.pop(nonce)
             # add client's audio socket to lobby channel
-            self.channels[0].clients.append(aud_sock)
+            self.channels[0].clients.append((com_sock, aud_sock))
         else:
             # map nonce to first socket, and type of first socket
             self.client_map[nonce] = [data[0], this_sock]
 
+        self.print_channels()
 
-    # handle_client_packet()
+    # server_handle_packet()
     # given a packet recieved from the client,
-    def handle_client_packet(self, type, data, this_sock):
-        if type== pack.C_INIT:
+    def server_handle_packet(self, type, data, this_sock):
+        if type == pack.C_INIT:
             self.help_handle_cinit(data, this_sock)
+        # elif type == pack.C_MSG:
+        #     print(f"Recieved from client: {data}")
+        elif type == pack.C_JOIN:
+            c_aud = self.client_map[this_sock]
+            for channel in self.channels:
+                if channel.query == data:
+                    self.move_client((this_sock, c_aud), channel)
+                    break
 
 
     # disconnect_client
     # removes a client from the given channel, and from the server
     # TODO: error checking on closing c_s?
-    def disconnect_client(self, channel, c_s):
+    def disconnect_client(self, channel, c_com):
+        # Try to find socket in client_map
+        c_aud = self.client_map[c_com]
+        channel.clients.remove((c_com, c_aud))
+        self.clients.remove(c_com)
+        self.clients.remove(c_aud)
+        self.client_map.pop(c_com)
+        c_com.close()
+        c_aud.close()
         # remove client if they disconnect
-        print(f"Client disconnected")   # TODO: map client c_s to str name
-        channel.clients.remove(c_s)
-        self.clients.remove(c_s)
-        c_s.close()
+        print(f"Client disconnected")
 
 
     # connect_new_client()
@@ -216,7 +242,7 @@ class Server:
     # initial setup packet (before writing any audio data to them)
     def connect_new_client(self):
         new_c_s, c_addr = self.host_s.accept()
-        self.clients.append(new_c_s)    # add new client comm socket
+        self.clients.append(new_c_s)    # add new client com socket
 
         # write setup packet to client, containing list of channel names
         pack.write_packet(new_c_s, pack.S_INIT, [c.query for c in self.channels])
@@ -229,27 +255,32 @@ class Server:
         bitrate = 44100
         send_delay = (pack.AUDIO_PACK / 8) / bitrate
 
+        print("We've initialized our server.")
         # Build list of playlists
         # Each playlist will be used for a channel
         # The first channel will be the lobby
         self.channels.append(Channel(LOBBY_QUERY, 1))
-        self.channels.extend([Channel(seed, 2) for seed in get_seeds(num_channels)])
+        for seed in get_seeds(num_channels):
+            new_channel = Channel(seed, 2)
+            if len(new_channel.songs) == 0:
+                print(f"Channel failed to construct: {seed}")
+                continue
+            self.channels.append(new_channel)
+        # self.channels.extend([Channel(seed, 2) for seed in get_seeds(num_channels)])
 
         self.print_channels()
 
-        # TODO: while server doesn't recieve shutdown signal
-        # from CLIENT on stdin
+        # TODO: while server doesn't recieve shutdown signal on STDIN
         while True:
             for channel in self.channels:
-                
-                for c_s in channel.clients:
+                for (c_com, c_aud) in channel.clients:
                     # build and song packet to all clients on channel
-                    if self.write_song_packet(c_s, channel) == -1:
-                        self.disconnect_client(channel, c_s)
+                    if self.write_song_packet(c_aud, channel) == -1:
+                        self.disconnect_client(channel, c_com)
                         self.print_channels()
 
             # check for new clients and data from clients
-            choices = [self.host_s] + [sys.stdin] + self.clients
+            choices = [self.host_s] + self.clients
             rlist, _, _ = select.select(choices, [], [], 0)
 
             for s in rlist:
@@ -257,20 +288,24 @@ class Server:
                 if s is self.host_s:
                     self.connect_new_client()
                     self.print_channels()
-                # if CLOSE_SERVER is entered on command line, kill server
-                elif s is sys.stdin:
-                    str_in = sys.stdin.readline()[:-1]  # remove newline
-                    if str_in == CLOSE:
-                        return
+                # if CLOSE_SERVER is entered on comand line, kill server
+                # elif s is sys.stdin:
+                #     str_in = sys.stdin.readline()[:-1]  # remove newline
+                #     if str_in == CLOSE:
+                #         return
                 # else, Client socket sent data to be read
                 else:
+                    # msg = "Hello client!"     TODO: remove msg writing
+                    # if pack.write_packet(s, pack.S_MSG, msg) == -1:
+                    #     self.disconnect_client(channel, s)
                     type, data = pack.read_packet(s)  # read packet from s
                     if type != -1:
-                        self.handle_client_packet(type, data, s)
+                        self.server_handle_packet(type, data, s)
             
             time.sleep(pack.SEND_DELAY)
 
 
+print("We're about to enter main.")
 #
 # MAIN: get cmd-line arguments and run server
 #
