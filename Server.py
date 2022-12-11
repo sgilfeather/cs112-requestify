@@ -176,7 +176,7 @@ class Server:
                 return num_sent
             except Exception:
                 print(f"Client disconnected")
-                self.disconnect_client(channel, c_aud)
+                self.disconnect_client(channel, c_com)
                 self.print_channels()
                 
 
@@ -224,6 +224,9 @@ class Server:
                 if channel.query == data:
                     self.move_client((this_sock, c_aud), channel)
                     break
+        elif type == pack.C_LIST:
+            # send list of channels to client
+            pack.write_packet(this_sock, pack.S_LIST, [channel.query for channel in self.channels])
 
 
     # disconnect_client

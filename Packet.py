@@ -36,6 +36,7 @@ C_MSG = 4
 
 C_JOIN = 5
 C_LIST = 6
+S_LIST = 7
 
 
 # construct_packet()

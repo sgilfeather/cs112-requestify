@@ -109,14 +109,17 @@ class Client:
         pack.write_packet(self.com_s, pack.C_JOIN, query)   # TODO: if returns -1
 
     def print_channels(self):
-        pass
+        pack.write_packet(self.com_s, pack.C_LIST, "")
 
 
     def client_handle_packet(self, type, data):
         if type == pack.S_INIT:
             self.chan_list = data
-        # elif type == pack.S_MSG:
-        #     print(f"Recieved from server: {data}")
+        elif type == pack.S_LIST:
+            print("˖⁺｡˚⋆˙" * 10)
+            print("Channels:")
+            for i in range(len(data)):
+                print(f"\t{data[i]}")
 
 
     # run_client()
@@ -158,7 +161,7 @@ class Client:
                             self.curr_channel = -1
                         else:
                             print("Invalid option")
-                        self.print_channels()
+                        self.print_menu()
                     else:
                         # TODO: remove MSG writing
                         # pack.write_packet(s, pack.C_MSG, "Hello server!")
