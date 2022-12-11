@@ -12,7 +12,7 @@ from pydub import AudioSegment
 import ffmpeg
 from urllib.parse import urlencode
 
-MAX_RETRIES = 2
+MAX_RETRIES = 10
 SONG_DIR = "songs"
 
 # stubborn_get()
