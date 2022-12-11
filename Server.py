@@ -73,7 +73,7 @@ class Channel:
         self.fill(num_songs)
 
         if len(self.songs) > 0:
-            next_song = self.songs.pop(0)
+            next_song = self.songs[0]
             self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
             # throw out wav header
             _ = self.open_file.read(44)
@@ -99,9 +99,10 @@ class Channel:
         if self.open_file:
             self.open_file.close()
 
-        if len(self.songs) == 0:
-            self.fill()
-        next_song = self.songs.pop(0)
+        # Rotate song list
+        self.songs = self.songs[1:] + self.songs[:1]
+
+        next_song = self.songs[0]
         self.open_file = open(os.path.join(SONG_DIR, next_song), "rb")
         # Throw out wav header
         _ = self.open_file.read(44)
@@ -158,22 +159,26 @@ class Server:
         print("-" * 20)
 
 
-    # write_song_packet()
-    # constructs and writes a packet of audio data to client on socket c_s
-    def write_song_packet(self, c_s, channel):
+    # write_song_packets()
+    # constructs and writes a packet of audio data to each client in the channel
+    def write_song_packets(self, channel):
         # create a packet of data for this channel's current song
         data = channel.open_file.read(pack.AUDIO_PACK)
 
         while len(data) < pack.AUDIO_PACK:
             channel.next()
             data += channel.open_file.read(pack.AUDIO_PACK - len(data))
-
-        try:
-            num_sent = c_s.send(data)
-            return num_sent
-        except Exception:
-            print(f"Client disconnected")
-            return -1; # client connection may have dropped out
+        
+        # write packet to each client on this channel
+        for (c_com, c_aud) in channel.clients:
+            try:
+                num_sent = c_aud.send(data)
+                return num_sent
+            except Exception:
+                print(f"Client disconnected")
+                self.disconnect_client(channel, c_aud)
+                self.print_channels()
+                
 
 
     # help_handle_cinit
@@ -261,7 +266,7 @@ class Server:
         # The first channel will be the lobby
         self.channels.append(Channel(LOBBY_QUERY, 1))
         for seed in get_seeds(num_channels):
-            new_channel = Channel(seed, 2)
+            new_channel = Channel(seed, 3)
             if len(new_channel.songs) == 0:
                 print(f"Channel failed to construct: {seed}")
                 continue
@@ -273,11 +278,7 @@ class Server:
         # TODO: while server doesn't recieve shutdown signal on STDIN
         while True:
             for channel in self.channels:
-                for (c_com, c_aud) in channel.clients:
-                    # build and song packet to all clients on channel
-                    if self.write_song_packet(c_aud, channel) == -1:
-                        self.disconnect_client(channel, c_com)
-                        self.print_channels()
+                self.write_song_packets(channel)
 
             # check for new clients and data from clients
             choices = [self.host_s] + self.clients
