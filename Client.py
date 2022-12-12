@@ -31,7 +31,7 @@ NONCE_VALS = string.ascii_uppercase + string.ascii_lowercase + string.digits
 class Client:
     aud_s: socket.socket
     com_s: socket.socket
-    nonce: string
+    nonce: str
     curr_channel: int   # initialized to 0, lobby
 
 
@@ -102,6 +102,7 @@ class Client:
         print("˖⁺｡˚⋆˙" * 10)
         print("\tjoin <channel>")
         print("\tlist")
+        print("\trequest <query>")
         print("\texit")
         print("Choose an option:")
     
@@ -111,6 +112,8 @@ class Client:
     def print_channels(self):
         pack.write_packet(self.com_s, pack.C_LIST, "")
 
+    def request_song(self, query):
+        pack.write_packet(self.com_s, pack.C_REQ, query)
 
     def client_handle_packet(self, type, data):
         if type == pack.S_INIT:
@@ -157,6 +160,8 @@ class Client:
                             self.join_channel(line[5:])
                         elif line == "list":
                             self.print_channels()
+                        elif line.startswith("request "):
+                            self.request_song(line[8:])
                         elif line == "quit" or line == "exit":
                             self.curr_channel = -1
                         else:

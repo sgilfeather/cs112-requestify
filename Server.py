@@ -34,6 +34,7 @@ STATE = 0
 SEED_FILE = "seeds.txt"
 LOBBY_QUERY = "PokéCenter" 
 CLOSE = "CLOSE_SERVER"
+SONG_LIST_SIZE = 2
 
 
 # get_seeds()
@@ -63,14 +64,14 @@ class Channel:
     clients: list   # current clients, identified by socket fd 
     open_file: BufferedReader   # current open song file
 
-    def __init__(self, query, num_songs=1):
+    def __init__(self, query, num_songs=SONG_LIST_SIZE):
         self.songs = []
         self.query = query
         self.clients = []
         self.open_file = None
         print(f"new channel: {query}")
         
-        self.fill(num_songs)
+        self.fill(SONG_LIST_SIZE)
 
         if len(self.songs) > 0:
             next_song = self.songs[0]
@@ -86,7 +87,7 @@ class Channel:
     # fill()
     # for each song retrieved from SongFetcher query, download its audio
     # byte data and append it to songs list 
-    def fill(self, num_songs=1):
+    def fill(self, num_songs=SONG_LIST_SIZE):
         search_results = sf.search(self.query, num_songs)
         for result in search_results:
             song = sf.download_song(result)
@@ -98,6 +99,9 @@ class Channel:
     def next(self):
         if self.open_file:
             self.open_file.close()
+        
+        if len(self.songs) == 0:
+            self.fill()
 
         # Rotate song list
         self.songs = self.songs[1:] + self.songs[:1]
@@ -213,20 +217,33 @@ class Server:
 
     # server_handle_packet()
     # given a packet recieved from the client,
-    def server_handle_packet(self, type, data, this_sock):
+    def server_handle_packet(self, type, data, c_com):
         if type == pack.C_INIT:
-            self.help_handle_cinit(data, this_sock)
+            self.help_handle_cinit(data, c_com)
         # elif type == pack.C_MSG:
         #     print(f"Recieved from client: {data}")
         elif type == pack.C_JOIN:
-            c_aud = self.client_map[this_sock]
+            c_aud = self.client_map[c_com]
             for channel in self.channels:
                 if channel.query == data:
-                    self.move_client((this_sock, c_aud), channel)
+                    self.move_client((c_com, c_aud), channel)
                     break
         elif type == pack.C_LIST:
             # send list of channels to client
-            pack.write_packet(this_sock, pack.S_LIST, [channel.query for channel in self.channels])
+            pack.write_packet(c_com, pack.S_LIST, [channel.query for channel in self.channels])
+        elif type == pack.C_REQ:
+            # No request query given
+            if len(data) == 0:
+                return
+            c_aud = self.client_map[c_com]
+            for channel in self.channels:
+                if (c_com, c_aud) in channel.clients:
+                    channel.query = data
+                    channel.songs = []
+                    channel.next()
+                    break
+            pack.write_packet(c_com, pack.S_LIST, [channel.query for channel in self.channels])
+            self.print_channels()
 
 
     # disconnect_client
@@ -269,7 +286,7 @@ class Server:
         # The first channel will be the lobby
         self.channels.append(Channel(LOBBY_QUERY, 1))
         for seed in get_seeds(num_channels):
-            new_channel = Channel(seed, 3)
+            new_channel = Channel(seed, SONG_LIST_SIZE)
             if len(new_channel.songs) == 0:
                 print(f"Channel failed to construct: {seed}")
                 continue
