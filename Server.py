@@ -45,8 +45,6 @@ def get_seeds(num_seeds):
     if os.path.exists(SEED_FILE):
         with open(SEED_FILE, "r") as f:
             seeds = f.read().splitlines()
-            while len(seeds) < num_seeds:
-                seeds += seeds
             random.shuffle(seeds)
             return seeds[:num_seeds]
     else:
@@ -71,7 +69,7 @@ class Channel:
         self.open_file = None
         print(f"new channel: {query}")
         
-        self.fill(SONG_LIST_SIZE)
+        self.fill(num_songs)
 
         if len(self.songs) > 0:
             next_song = self.songs[0]
