@@ -33,7 +33,7 @@ STATE = 0
 
 SEED_FILE = "seeds.txt"
 LOBBY_QUERY = "PokéCenter" 
-CLOSE = "CLOSE_SERVER"
+CLOSE = "exit"
 SONG_LIST_SIZE = 2
 
 
@@ -59,7 +59,7 @@ def get_seeds(num_seeds):
 class Channel:
     songs: list     # maintained list of songs
     query: str      # current query to SoundCloud 
-    clients: list   # current clients, identified by socket fd 
+    clients: list   # current clients: (comm sock, aud sock)
     open_file: BufferedReader   # current open song file
 
     def __init__(self, query, num_songs=SONG_LIST_SIZE):
@@ -122,7 +122,8 @@ class Server:
         self.host_s = 0
         self.clients = [] # list of client sockets
         self.channels = [] # list of channels
-        self.client_map = {}    # maps client audio c_s's to com c_s's
+        self.client_map = {}    # maps client com c_s's to audio c_s's
+        self.name_map = {}     # maps client audio c_s's to their name
 
         print("About to open the server socket.")
         # basic server functionality
@@ -188,16 +189,22 @@ class Server:
         for channel in self.channels:
             if client_socks in channel.clients:     # broadcast to this Channel
                 for (com_sock, aud_sock) in channel.clients:
-                    pack.write_packet(com_sock, pack.S_MSG, msg)
+                    full_msg = f"<{self.name_map[aud_sock]}> {msg}"
+                    pack.write_packet(com_sock, pack.S_MSG, full_msg)
                 break
 
 
     # help_handle_cinit
     # handles C_INIT packet
     def help_handle_cinit(self, data, this_sock):
-        # data[0] is "com" or "aud", data[1] is temp nonce
-        # if nonce value is in map, finish the com : audio mapping
+        # data[0] is "com" or "aud", data[1] is temp nonce, data[2] is name
+        if data[1] == "com" and data[2] in self.name_map.values():
+            pack.write_packet(this_sock, S_ERR, "Username " + data[2] + " already taken.")
+            return  # don't save if name taken, force client to resend
+
         nonce = data[1]
+        name = data[2]
+        # if nonce value is in map, finish the com : audio mapping
         if nonce in self.client_map:
             # if com socket connected first
             aud_sock = 0
@@ -216,11 +223,11 @@ class Server:
             self.client_map.pop(nonce)
             # add client's audio socket to lobby channel
             self.channels[0].clients.append((com_sock, aud_sock))
+            self.name_map[aud_sock] = name
+            self.print_channels()
         else:
             # map nonce to first socket, and type of first socket
             self.client_map[nonce] = [data[0], this_sock]
-
-        self.print_channels()
 
 
     # server_handle_packet()
@@ -281,7 +288,10 @@ class Server:
         self.clients.append(new_c_s)    # add new client com socket
 
         # write setup packet to client, containing list of channel names
-        pack.write_packet(new_c_s, pack.S_INIT, [c.query for c in self.channels])
+        # and list of current client usernames
+        names = list(self.name_map.values())
+        data = {"c":[c.query for c in self.channels], "n":names}
+        pack.write_packet(new_c_s, pack.S_INIT, data)
 
 
     # run_server()
@@ -312,24 +322,19 @@ class Server:
                 self.write_song_packets(channel)
 
             # check for new clients and data from clients
-            choices = [self.host_s] + self.clients
+            choices = [self.host_s, sys.stdin] + self.clients
             rlist, _, _ = select.select(choices, [], [], 0)
 
             for s in rlist:
                 # Server socket is ready to accept a new client
                 if s is self.host_s:
                     self.connect_new_client()
-                    self.print_channels()
                 # if CLOSE_SERVER is entered on comand line, kill server
-                # elif s is sys.stdin:
-                #     str_in = sys.stdin.readline()[:-1]  # remove newline
-                #     if str_in == CLOSE:
-                #         return
-                # else, Client socket sent data to be read
+                elif s is sys.stdin:
+                    str_in = sys.stdin.readline().lower()[:-1]
+                    if str_in == CLOSE:
+                        return
                 else:
-                    # msg = "Hello client!"     TODO: remove msg writing
-                    # if pack.write_packet(s, pack.S_MSG, msg) == -1:
-                    #     self.disconnect_client(channel, s)
                     type, data = pack.read_packet(s)  # read packet from s
                     if type != -1:
                         self.server_handle_packet(type, data, s)

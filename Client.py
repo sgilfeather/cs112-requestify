@@ -47,19 +47,12 @@ class Client:
         self.curr_channel = 0
         self.chan_list = []
 
-        # TODO: for now, just setting up audio streams
-        try:
-            self.com_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.com_s.connect((host_addr, host_port))
-        except Exception as e:
-            print(f"Client network error for audio sock: {str(e)}.")
-            sys.exit(0) 
-
         self.out_filename = "9851200.wav"
         # Remove the output file if it already exists
         if os.path.exists(self.out_filename):
             os.remove(self.out_filename)
 
+        self.open_socket("com")  
 
     def __del__(self):
         if isinstance(self.com_s, socket.socket):
@@ -68,6 +61,17 @@ class Client:
         if isinstance(self.aud_s, socket.socket):
             self.aud_s.close()
     
+    def open_socket(self, which):
+        try:
+            if which == "com":
+                self.com_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.com_s.connect((self.host_addr, self.host_port))
+            elif which == "aud":
+                self.aud_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.aud_s.connect((self.host_addr, self.host_port))
+        except Exception as e:
+            print(f"Client network error for socket: {str(e)}.")
+            sys.exit(0) 
 
     def stream_callback(self, outdata, frames, time, status):
         if status:
@@ -80,24 +84,26 @@ class Client:
         outdata[len(new_data):] = b'\0' * (len(outdata) - len(new_data))
 
 
-    # send_init_packet()
+    # setup_protocol()
     # set up client's channel list, and set up a separate communications
     # port for the c_s
-    def send_init_packet(self, data):
-        # data should be the list ["channel_1", ... "channel_len"]
-        self.chan_list = data
+    def setup_protocol(self, channel_list, curr_names):
+        self.chan_list = channel_list
+        try_name = self.get_username()
+
+        # if username is already taken, get new username and retry Server
+        if try_name in curr_names:
+            print(f"Username {try_name} is already taken.")
+            self.com_s.close()  # close and try to reopen socket
+            self.open_socket("com")
+            return  # will receive a new S_INIT packet with names
+ 
         # associate both aud_s and com_s on serverside with given nonce
-        pack.write_packet(self.com_s, pack.C_INIT, ["com", self.nonce])
+        pack.write_packet(self.com_s, pack.C_INIT, ["com", self.nonce, try_name])
 
         # setup new port for communications
-        try:
-            self.aud_s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.aud_s.connect((self.host_addr, self.host_port))
-        except Exception as e:
-            print(f"Client network error for com sock: {str(e)}.")
-            sys.exit(0) 
-
-        pack.write_packet(self.aud_s, pack.C_INIT, ["aud", self.nonce])
+        self.open_socket("aud")
+        pack.write_packet(self.aud_s, pack.C_INIT, ["aud", self.nonce, try_name])
 
 
     # print_menu()
@@ -141,7 +147,7 @@ class Client:
     def client_handle_packet(self, type, data):
         # initial 'hello' packet, and set channel list
         if type == pack.S_INIT:
-            self.chan_list = data
+            self.chan_list = data["c"]
 
         # print list of channels
         elif type == pack.S_LIST:
@@ -151,8 +157,12 @@ class Client:
             for i in range(len(data)):
                 print(f"\t{data[i]}")
 
+            print("\n* ", end="", flush=True)
+
         elif type == pack.S_MSG:
-            print(f"<user>: {data}\n")
+            print(data)
+            print("\n* ", end="", flush=True)
+
 
     # client_handle_user_input()
     # reads a single line from user and parses it for command input
@@ -173,9 +183,20 @@ class Client:
             self.write_chat(line[5:])
         elif line == "help":
             self.print_menu()
+            print("\n* ", end="", flush=True)
         else:
             print("Invalid option.")
+            print("\n* ", end="", flush=True)
         
+
+    def get_username(self):
+        print("Enter a username (up to 16 characters): ", end="", flush=True)
+        name = sys.stdin.readline()[:-1]
+        while (len(name) > 20):
+            print("Too long. Enter a username (up to 16 characters): ", end="", flush=True)
+        
+        return name
+
 
     # run_client()
     # executes loop for recieving streamed server data
@@ -192,7 +213,7 @@ class Client:
             print(f"Error: did not recieve init packet from server.")
             return
         
-        self.send_init_packet(data) 
+        self.setup_protocol(data["c"], data["n"])  # confirm username and setup audio socket
 
         print("˖⁺｡˚⋆˙" * 10)
         print(f"\nWelcome to the client!")
@@ -211,12 +232,11 @@ class Client:
                         print("")
                         type, data = pack.read_packet(s)
                         self.client_handle_packet(type, data)
-                        print("\n* ", end="", flush=True)
                         
                     # if input from the user, parse and handle input!
                     elif s == sys.stdin:
                         self.client_handle_user_input();
-                        print("\n* ", end="", flush=True)
+                        
                     
 
     # read_frame()

@@ -29,16 +29,17 @@ AUDIO_PACK = 1024
 SEND_DELAY = (AUDIO_PACK / 8) / BITRATE
 
 # packet types
-S_INIT = 1
-C_INIT = 2
-S_MSG = 3
-C_MSG = 4
+S_INIT = 1  # bootstrap communications: sends channel list
+C_INIT = 2  # bootstrap communications: sends nonce, socket type
+S_MSG = 3   # chat: message being broadcasted to channel
+C_MSG = 4   # chat: message to be sent to channel
 
-C_JOIN = 5
-C_LIST = 6
-S_LIST = 7
-C_REQ = 8
-S_ERR = 9
+C_JOIN = 5  # join: client request to join channel
+C_LIST = 6  # list: client request for updated list of channels
+S_LIST = 7  # list: server response with updated list of channels
+C_REQ = 8   # request: client request for song with updated vibe
+S_ERR = 9   # err: server response to a poorly formed client packet
+S_YES = 9   # err: server confirmation to a given client packet
 
 
 # construct_packet()
