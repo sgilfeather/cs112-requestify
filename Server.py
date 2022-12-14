@@ -342,17 +342,20 @@ class Server:
             time.sleep(pack.SEND_DELAY)
 
 
-print("We're about to enter main.")
 #
 # MAIN: get cmd-line arguments and run server
 #
-if len(sys.argv) != 2:
-    print("Usage: python3 Server.py <host port>")
-    quit()
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python3 Server.py <host port>")
+        quit()
 
-host_port = sys.argv[1]
-server = Server(int(host_port))
+    host_port = sys.argv[1]
+    server = Server(int(host_port))
 
-server.run_server()
-print("˖⁺｡˚⋆˙" * 10)
-print("Thank you for running the Server.")
+    server.run_server()
+    print("˖⁺｡˚⋆˙" * 10)
+    print("Thank you for running the Server.")
+
+if __name__ == "__main__":
+    main()
