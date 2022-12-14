@@ -47,11 +47,6 @@ class Client:
         self.curr_channel = 0
         self.chan_list = []
 
-        self.out_filename = "9851200.wav"
-        # Remove the output file if it already exists
-        if os.path.exists(self.out_filename):
-            os.remove(self.out_filename)
-
         self.open_socket("com")  
 
     def __del__(self):
@@ -263,12 +258,16 @@ class Client:
 #
 # MAIN: get cmd-line arguments and run client
 #
-if len(sys.argv) != 3:
-    print(f"Usage: python {sys.argv[0]} <server address> <server port>")
-    exit(1)
+def main():
+    if len(sys.argv) != 3:
+        print(f"Usage: python {sys.argv[0]} <server address> <server port>")
+        exit(1)
 
-host_addr = sys.argv[1]
-host_port = sys.argv[2]
+    host_addr = sys.argv[1]
+    host_port = sys.argv[2]
 
-client = Client(host_addr, int(host_port))
-client.run_client()
+    client = Client(host_addr, int(host_port))
+    client.run_client()
+
+if __name__ == "__main__":
+    main()
