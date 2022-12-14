@@ -23,6 +23,7 @@ import Packet as pack
 
 SELF = "127.0.0.1"  # loopback for hosting oneself
 NONCE_VALS = string.ascii_uppercase + string.ascii_lowercase + string.digits
+MSG_MAX = 140
 
 #
 # class Client
@@ -98,32 +99,83 @@ class Client:
 
         pack.write_packet(self.aud_s, pack.C_INIT, ["aud", self.nonce])
 
-    def print_menu(self):
-        print("˖⁺｡˚⋆˙" * 10)
-        print("\tjoin <channel>")
-        print("\tlist")
-        print("\trequest <query>")
-        print("\texit")
-        print("Choose an option:")
-    
-    def join_channel(self, query):
-        pack.write_packet(self.com_s, pack.C_JOIN, query)   # TODO: if returns -1
 
-    def print_channels(self):
+    # print_menu()
+    # prints menu with client's current list of channels
+    def print_menu(self):
+        print("\n" + "˖⁺｡˚⋆˙" * 10)
+        print("Options:")
+        print("\tjoin [ channel ]")
+        print("\tlist")
+        print("\trequest [ query ]")
+        print("\tchat [ message ]")
+    
+    # join_channel()
+    # wrapper to send C_JOIN packet to Server to join new channel
+    def join_channel(self, query):
+        pack.write_packet(self.com_s, pack.C_JOIN, query)
+        # TODO: update internal "curr_channel"
+
+    # request_channels
+    # wrapper to send C_LIST packet and ask Server for updated channel list
+    def request_channels(self):
         pack.write_packet(self.com_s, pack.C_LIST, "")
 
+    # request_song
+    # wrapper to send C_REQ packet and ask Server to add a song from query
     def request_song(self, query):
         pack.write_packet(self.com_s, pack.C_REQ, query)
 
+    # write_chat()
+    # writes a chat of maximum MSG_MAX characters to all other clients on
+    # this client's channel
+    def write_chat(self, message):
+        if len(message) > MSG_MAX:
+            print(f"Error: message \"{message[:20]}...\" too long.\n")
+            return
+        pack.write_packet(self.com_s, pack.C_MSG, message)
+
+
+    # client_handle_packet()
+    # helper func to process packets recived from the Server
     def client_handle_packet(self, type, data):
+        # initial 'hello' packet, and set channel list
         if type == pack.S_INIT:
             self.chan_list = data
+
+        # print list of channels
         elif type == pack.S_LIST:
+            self.chan_list = data   # update channel list
             print("˖⁺｡˚⋆˙" * 10)
             print("Channels:")
             for i in range(len(data)):
                 print(f"\t{data[i]}")
 
+        elif type == pack.S_MSG:
+            print(f"<user>: {data}\n")
+
+    # client_handle_user_input()
+    # reads a single line from user and parses it for command input
+    # commands are case-insensitive– if a command is invalid, 
+    def client_handle_user_input(self):
+        line = sys.stdin.readline()
+        line = line.strip().lower()     # input is case insensitive
+
+        if line.startswith("join "):
+            self.join_channel(line[5:])
+        elif line == "list":
+            self.request_channels()
+        elif line.startswith("request "):
+            self.request_song(line[8:])
+        elif line == "quit" or line == "exit":
+            self.curr_channel = -1
+        elif line.startswith("chat "):
+            self.write_chat(line[5:])
+        elif line == "help":
+            self.print_menu()
+        else:
+            print("Invalid option.")
+        
 
     # run_client()
     # executes loop for recieving streamed server data
@@ -132,10 +184,6 @@ class Client:
             samplerate=44100, blocksize=int(pack.AUDIO_PACK / 4),
             channels=2, dtype='int16',
             callback=self.stream_callback)
-
-        print("˖⁺｡˚⋆˙" * 10)
-        print(f"\nWelcome to the client!\n")
-        self.print_menu()
    
         # listen for init packets: first packet on com_s stream should
         # contain setup com port with channel options
@@ -146,33 +194,30 @@ class Client:
         
         self.send_init_packet(data) 
 
+        print("˖⁺｡˚⋆˙" * 10)
+        print(f"\nWelcome to the client!")
+        self.print_menu()
+        print("Choose an option: \n* ", end="")
+
         with stream:
            # to exit, curr_channel is set to -1 (error state)
             while self.curr_channel > -1:
-                # check for input messages
-                
+
                 rlist, _, _ = select.select([sys.stdin, self.com_s], [], [], 0)
+                # check for new messages on comm socket, or input from user
                 for s in rlist:
-                    if sys.stdin in rlist:
-                        line = sys.stdin.readline()
-                        line = line.strip()
-                        if line.startswith("join "):
-                            self.join_channel(line[5:])
-                        elif line == "list":
-                            self.print_channels()
-                        elif line.startswith("request "):
-                            self.request_song(line[8:])
-                        elif line == "quit" or line == "exit":
-                            self.curr_channel = -1
-                        else:
-                            print("Invalid option")
-                        self.print_menu()
-                    else:
-                        # TODO: remove MSG writing
-                        # pack.write_packet(s, pack.C_MSG, "Hello server!")
-                        type, data = pack.read_packet(s)  # read packet from s
-                        if type != -1:
-                            self.client_handle_packet(type, data)
+                    # read a communications packet from Server 
+                    if s == self.com_s:
+                        print("")
+                        type, data = pack.read_packet(s)
+                        self.client_handle_packet(type, data)
+                        print("\n* ", end="", flush=True)
+                        
+                    # if input from the user, parse and handle input!
+                    elif s == sys.stdin:
+                        self.client_handle_user_input();
+                        print("\n* ", end="", flush=True)
+                    
 
     # read_frame()
         # reads a single audio frame from the server's audio socket to the

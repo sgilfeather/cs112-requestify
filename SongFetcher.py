@@ -21,7 +21,6 @@ SONG_DIR = "songs"
 def stubborn_get(url):
     response = requests.get(url, timeout=5)
     retries = 0
-    print(f"status code is {response.status_code }")
 
     while response.status_code != 200 and retries < MAX_RETRIES:
         response = requests.get(url, timeout=5)
@@ -30,6 +29,12 @@ def stubborn_get(url):
             print(f"Failed to get {url}, retrying")
     if retries == MAX_RETRIES:
         print(f"Failed to get {url} after {MAX_RETRIES} retries")
+
+        # bad authentication: try to regenerate the CLIENT_ID key
+        if response.status_code == 401:
+            dotenv.unset_key(".env", "CLIENT_ID", quote_mode='always', encoding='utf-8')
+            get_client_id()     # re-get client ID, scraped from SoundCloud
+
     return response
 
 
@@ -122,6 +127,7 @@ def get_client_id():
     
     # Fall back to scraping the client ID from the SoundCloud website
     res = requests.get("https://soundcloud.com")
+
     # The link to the JS file with the client ID looks like this:
 	# <script crossorigin src="https://a-v2.sndcdn.com/assets/sdfhkjhsdkf.js"></script
     urls = res.text.split("<script crossorigin src=\"")[1:]

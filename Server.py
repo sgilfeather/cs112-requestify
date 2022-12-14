@@ -143,6 +143,7 @@ class Server:
     # move_client()
     # moves client from their current channel to new channel, new_ch
     def move_client(self, client, new_ch: Channel):
+        # TODO: make faster
         for channel in self.channels:
             if client in channel.clients:
                 channel.clients.remove(client)
@@ -172,15 +173,23 @@ class Server:
             data += channel.open_file.read(pack.AUDIO_PACK - len(data))
         
         # write packet to each client on this channel
-        for (c_com, c_aud) in channel.clients:
+        for (com_sock, aud_sock) in channel.clients:
             try:
-                num_sent = c_aud.send(data)
+                num_sent = aud_sock.send(data)
                 return num_sent
             except Exception:
                 print(f"Client disconnected")
-                self.disconnect_client(channel, c_com)
+                self.disconnect_client(channel, com_sock)
                 self.print_channels()
-                
+
+
+    def broadcast_chat(self, msg, client_socks):
+        # TODO: make faster
+        for channel in self.channels:
+            if client_socks in channel.clients:     # broadcast to this Channel
+                for (com_sock, aud_sock) in channel.clients:
+                    pack.write_packet(com_sock, pack.S_MSG, msg)
+                break
 
 
     # help_handle_cinit
@@ -213,49 +222,53 @@ class Server:
 
         self.print_channels()
 
+
     # server_handle_packet()
     # given a packet recieved from the client,
-    def server_handle_packet(self, type, data, c_com):
+    def server_handle_packet(self, type, data, com_sock):
         if type == pack.C_INIT:
-            self.help_handle_cinit(data, c_com)
-        # elif type == pack.C_MSG:
-        #     print(f"Recieved from client: {data}")
+            self.help_handle_cinit(data, com_sock)
+
         elif type == pack.C_JOIN:
-            c_aud = self.client_map[c_com]
+            aud_sock = self.client_map[com_sock]
             for channel in self.channels:
                 if channel.query == data:
-                    self.move_client((c_com, c_aud), channel)
-                    break
+                    self.move_client((com_sock, aud_sock), channel)
+                    return
+                    
         elif type == pack.C_LIST:
             # send list of channels to client
-            pack.write_packet(c_com, pack.S_LIST, [channel.query for channel in self.channels])
+            pack.write_packet(com_sock, pack.S_LIST, [channel.query for channel in self.channels])
+
         elif type == pack.C_REQ:
             # No request query given
             if len(data) == 0:
                 return
-            c_aud = self.client_map[c_com]
+            aud_sock = self.client_map[com_sock]
             for channel in self.channels:
-                if (c_com, c_aud) in channel.clients:
+                if (com_sock, aud_sock) in channel.clients:
                     channel.query = data
                     channel.songs = []
                     channel.next()
                     break
-            pack.write_packet(c_com, pack.S_LIST, [channel.query for channel in self.channels])
+            pack.write_packet(com_sock, pack.S_LIST, [channel.query for channel in self.channels])
             self.print_channels()
 
+        elif type == pack.C_MSG:
+            self.broadcast_chat(data, (com_sock, self.client_map[com_sock]))
 
     # disconnect_client
     # removes a client from the given channel, and from the server
     # TODO: error checking on closing c_s?
-    def disconnect_client(self, channel, c_com):
+    def disconnect_client(self, channel, com_sock):
         # Try to find socket in client_map
-        c_aud = self.client_map[c_com]
-        channel.clients.remove((c_com, c_aud))
-        self.clients.remove(c_com)
-        self.clients.remove(c_aud)
-        self.client_map.pop(c_com)
-        c_com.close()
-        c_aud.close()
+        aud_sock = self.client_map[com_sock]
+        channel.clients.remove((com_sock, aud_sock))
+        self.clients.remove(com_sock)
+        self.clients.remove(aud_sock)
+        self.client_map.pop(com_sock)
+        com_sock.close()
+        aud_sock.close()
         # remove client if they disconnect
         print(f"Client disconnected")
 

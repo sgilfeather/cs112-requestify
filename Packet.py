@@ -38,6 +38,7 @@ C_JOIN = 5
 C_LIST = 6
 S_LIST = 7
 C_REQ = 8
+S_ERR = 9
 
 
 # construct_packet()
