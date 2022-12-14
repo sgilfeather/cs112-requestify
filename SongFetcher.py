@@ -12,7 +12,6 @@ from pydub import AudioSegment
 import ffmpeg
 from urllib.parse import urlencode
 
-MAX_RETRIES = 10
 SONG_DIR = "songs"
 
 # stubborn_get()
@@ -35,6 +34,15 @@ def stubborn_get(url):
             dotenv.unset_key(".env", "CLIENT_ID", quote_mode='always', encoding='utf-8')
             get_client_id()     # re-get client ID, scraped from SoundCloud
 
+
+# sneaky_get()
+# Given a url for a GET request, makes a GET request to that url with a fake
+# user agent to avoid being blocked by SoundCloud
+def sneaky_get(url):
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
+    }
+    response = requests.get(url, headers=headers, timeout=5)
     return response
 
 
@@ -51,7 +59,7 @@ def search(query, limit=10, genre=""):
         "client_id": get_client_id(),
     }
     url = f"https://api-v2.soundcloud.com/search/tracks?" + urlencode(q_params)
-    response = stubborn_get(url)
+    response = sneaky_get(url)
     if response.status_code != 200:
         return []
     return response.json()["collection"]
@@ -80,12 +88,12 @@ def download_song(track):
         "client_id": get_client_id(),
     }
     transcode_url = track["media"]["transcodings"][0]["url"] + "?" + urlencode(q_params)
-    response = stubborn_get(transcode_url)
+    response = sneaky_get(transcode_url)
     if response.status_code != 200:
         return None
 
     playlist_url = response.json()["url"]
-    response = stubborn_get(playlist_url)
+    response = sneaky_get(playlist_url)
     if response.status_code != 200:
         return None
     
@@ -99,7 +107,7 @@ def download_song(track):
             # These are comments
             if segment.startswith(b"#"):
                 continue
-            response = stubborn_get(segment)
+            response = sneaky_get(segment)
             if response.status_code == 200:
                 f.write(response.content)
     
