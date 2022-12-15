@@ -13,6 +13,7 @@ import ffmpeg
 from urllib.parse import urlencode
 
 SONG_DIR = "songs"
+MAX_RETRIES = 5
 
 # stubborn_get()
 # Given a url for a GET req, attempts up to MAX_RETRIES GET requests for
@@ -43,6 +44,18 @@ def sneaky_get(url):
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",
     }
     response = requests.get(url, headers=headers, timeout=5)
+    retries = 0
+
+    while response.status_code != 200 and retries < MAX_RETRIES:
+        print(f"Failed to get {url} after {retries} retries, trying again")
+        # bad authentication: try to regenerate the CLIENT_ID key
+        if response.status_code == 401:
+            dotenv.unset_key(".env", "CLIENT_ID", quote_mode='always', encoding='utf-8')
+            get_client_id()     # re-get client ID, scraped from SoundCloud
+        
+        response = requests.get(url, timeout=5)
+        retries += 1
+
     return response
 
 
@@ -60,6 +73,7 @@ def search(query, limit=10, genre=""):
     }
     url = f"https://api-v2.soundcloud.com/search/tracks?" + urlencode(q_params)
     response = sneaky_get(url)
+
     if response.status_code != 200:
         return []
     return response.json()["collection"]
@@ -77,11 +91,11 @@ def download_song(track):
     filename = f"{id}.mp3"
     filename_wav = f"{id}.wav"
 
-    print(f"Downloading: {title} ({id})")
+    # print(f"Downloading: {title} ({id})")
 
     # Immediately return if the file was already downloaded
     if os.path.exists(os.path.join(SONG_DIR, filename)):
-        print(f"File {filename} already downloaded")
+        # print(f"File {filename} already downloaded")
         return filename_wav
 
     q_params = {

@@ -185,12 +185,13 @@ class Server:
 
 
     def broadcast_chat(self, msg, client_socks):
+        sender_name = self.name_map[client_socks[1]]
         # TODO: make faster
         for channel in self.channels:
             if client_socks in channel.clients:     # broadcast to this Channel
-                for (com_sock, aud_sock) in channel.clients:
-                    full_msg = f"<{self.name_map[aud_sock]}> {msg}"
-                    pack.write_packet(com_sock, pack.S_MSG, full_msg)
+                for (c_s, a_s) in channel.clients:
+                    full_msg = f"<{sender_name}> {msg}"
+                    pack.write_packet(c_s, pack.S_MSG, full_msg)
                 break
 
 
@@ -266,7 +267,6 @@ class Server:
 
     # disconnect_client
     # removes a client from the given channel, and from the server
-    # TODO: error checking on closing c_s?
     def disconnect_client(self, channel, com_sock):
         # Try to find socket in client_map
         aud_sock = self.client_map[com_sock]
@@ -274,6 +274,8 @@ class Server:
         self.clients.remove(com_sock)
         self.clients.remove(aud_sock)
         self.client_map.pop(com_sock)
+        self.name_map.pop(aud_sock)
+
         com_sock.close()
         aud_sock.close()
         # remove client if they disconnect
