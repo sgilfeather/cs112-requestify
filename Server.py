@@ -24,7 +24,7 @@ import time
 from io import BufferedReader
 import json
 
-SELF = "127.0.0.1"  # loopback for hosting oneself
+SELF = "0.0.0.0"  # loopback for hosting oneself
 
 STATE = 0
     # STATE: -1 = quit / error, 0 = listening for new client
@@ -200,7 +200,7 @@ class Server:
     def help_handle_cinit(self, data, this_sock):
         # data[0] is "com" or "aud", data[1] is temp nonce, data[2] is name
         if data[1] == "com" and data[2] in self.name_map.values():
-            pack.write_packet(this_sock, S_ERR, "Username " + data[2] + " already taken.")
+            pack.write_packet(this_sock, pack.S_ERR, "Username " + data[2] + " already taken.")
             return  # don't save if name taken, force client to resend
 
         nonce = data[1]
@@ -300,10 +300,6 @@ class Server:
     # given a port, runs ( name ) server: writes file in pack.AUDIO_PACK
     # packets to client
     def run_server(self, num_channels=4):
-        bitrate = 44100
-        send_delay = (pack.AUDIO_PACK / 8) / bitrate
-
-        print("We've initialized our server.")
         # Build list of playlists
         # Each playlist will be used for a channel
         # The first channel will be the lobby
@@ -314,7 +310,6 @@ class Server:
                 print(f"Channel failed to construct: {seed}")
                 continue
             self.channels.append(new_channel)
-        # self.channels.extend([Channel(seed, 2) for seed in get_seeds(num_channels)])
 
         self.print_channels()
 
@@ -344,17 +339,20 @@ class Server:
             time.sleep(pack.SEND_DELAY)
 
 
-print("We're about to enter main.")
 #
 # MAIN: get cmd-line arguments and run server
 #
-if len(sys.argv) != 2:
-    print("Usage: python3 Server.py <host port>")
-    quit()
+def main():
+    if len(sys.argv) != 2:
+        print("Usage: python3 Server.py <host port>")
+        quit()
 
-host_port = sys.argv[1]
-server = Server(int(host_port))
+    host_port = sys.argv[1]
+    server = Server(int(host_port))
 
-server.run_server()
-print("˖⁺｡˚⋆˙" * 10)
-print("Thank you for running the Server.")
+    server.run_server()
+    print("˖⁺｡˚⋆˙" * 10)
+    print("Thank you for running the Server.")
+
+if __name__ == "__main__":
+    main()
