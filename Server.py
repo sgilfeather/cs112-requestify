@@ -24,7 +24,7 @@ import time
 from io import BufferedReader
 import json
 
-SELF = "127.0.0.1"  # loopback for hosting oneself
+SELF = "0.0.0.0"  # loopback for hosting oneself
 
 STATE = 0
     # STATE: -1 = quit / error, 0 = listening for new client
