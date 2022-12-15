@@ -199,7 +199,7 @@ class Server:
     def help_handle_cinit(self, data, this_sock):
         # data[0] is "com" or "aud", data[1] is temp nonce, data[2] is name
         if data[1] == "com" and data[2] in self.name_map.values():
-            pack.write_packet(this_sock, S_ERR, "Username " + data[2] + " already taken.")
+            pack.write_packet(this_sock, pack.S_ERR, "Username " + data[2] + " already taken.")
             return  # don't save if name taken, force client to resend
 
         nonce = data[1]
@@ -298,10 +298,6 @@ class Server:
     # given a port, runs ( name ) server: writes file in pack.AUDIO_PACK
     # packets to client
     def run_server(self, num_channels=4):
-        bitrate = 44100
-        send_delay = (pack.AUDIO_PACK / 8) / bitrate
-
-        print("We've initialized our server.")
         # Build list of playlists
         # Each playlist will be used for a channel
         # The first channel will be the lobby
@@ -312,7 +308,6 @@ class Server:
                 print(f"Channel failed to construct: {seed}")
                 continue
             self.channels.append(new_channel)
-        # self.channels.extend([Channel(seed, 2) for seed in get_seeds(num_channels)])
 
         self.print_channels()
 

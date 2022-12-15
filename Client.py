@@ -168,6 +168,7 @@ class Client:
 
         if line.startswith("join "):
             self.join_channel(line[5:])
+            print("\n* ", end="", flush=True)
         elif line == "list":
             self.request_channels()
         elif line.startswith("request "):
