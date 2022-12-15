@@ -56,10 +56,24 @@ def test_packet(port):
 
     close_client_server(c_s, s_s, s_to_c)
 
+def spawn_multi_clients():
+    # Fork 10 child processes to test packet sending
+    import os
+    for _ in range(10):
+        pid = os.fork()
+        if pid == 0:
+            # Run Client.py
+            os.execlp("python3", "python3", "Client.py", sys.argv[1], sys.argv[2])
+            quit()
+        else:
+            print(f"Started child process {pid}")
 
-# MAIN
-if len(sys.argv) != 2:
-    print("Usage: python3 Test.py <test port>")
-    quit()
+def main():
+    if len(sys.argv) != 3:
+        print("Usage: python3 Test.py <server address> <port>")
+        quit()
 
-test_packet(int(sys.argv[1]))
+    # test_packet(int(sys.argv[1]))
+
+if __name__ == "__main__":
+    main()
