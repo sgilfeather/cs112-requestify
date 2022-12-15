@@ -1,3 +1,6 @@
 lofi
 city pop
-eighties
+acoustic
+study
+jazz
+ambient

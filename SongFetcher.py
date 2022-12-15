@@ -38,7 +38,7 @@ def stubborn_get(url):
 
 # sneaky_get()
 # Given a url for a GET request, makes a GET request to that url with a fake
-# user agent to avoid being blocked by SoundCloud
+# user agent to avoid being blocked by SoundCloud ()
 def sneaky_get(url):
     headers = {
         "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.1 Safari/605.1.15",

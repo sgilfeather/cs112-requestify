@@ -190,6 +190,7 @@ class Client:
         name = sys.stdin.readline()[:-1]
         while (len(name) > 20):
             print("Too long. Enter a username (up to 16 characters): ", end="", flush=True)
+            name = sys.stdin.readline()[:-1]
         
         return name
 
