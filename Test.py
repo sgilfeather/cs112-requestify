@@ -64,7 +64,6 @@ def spawn_multi_clients():
         if pid == 0:
             # Run Client.py
             os.execlp("python3", "python3", "Client.py", sys.argv[1], sys.argv[2])
-            quit()
         else:
             print(f"Started child process {pid}")
 
@@ -73,6 +72,7 @@ def main():
         print("Usage: python3 Test.py <server address> <port>")
         quit()
 
+    spawn_multi_clients()
     # test_packet(int(sys.argv[1]))
 
 if __name__ == "__main__":
